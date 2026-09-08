@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Just Run DINO! - Avengers Edition</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <div class="game-container">
+        <!-- Retro Scanline Effect Layer -->
+        <div class="scanlines"></div>
+
+        <!-- Character Selection Menu Overlay -->
+        <div id="menu-overlay" class="overlay">
+            <div class="header-badge">AVENGERS PROTOCOL V2.0</div>
+            <h1>Just Run DINO!</h1>
+            <p>Press 'E' to switch Marvel Gear on the T-Rex & 'F' to attack Galactus!</p>
+            
+            <div class="character-grid">
+                <!-- Character Card 1: T-Rex (Avengers Gear) -->
+                <div class="char-card selected" data-char="dino">
+                    <div class="char-preview dino-preview">🦖</div>
+                    <h3>Marvel T-Rex</h3>
+                    <p>Iron Man, Thor, Cap & Thanos suits available.</p>
+                    <div class="card-tag">GOD-TIER</div>
+                </div>
+
+                <!-- Character Card 2 -->
+                <div class="char-card" data-char="developer">
+                    <div class="char-preview dev-preview">💻</div>
+                    <h3>Stressed Dev</h3>
+                    <p>Running away from production bugs.</p>
+                    <div class="card-tag">FAST</div>
+                </div>
+
+                <!-- Character Card 3 -->
+                <div class="char-card" data-char="astronaut">
+                    <div class="char-preview space-preview">🚀</div>
+                    <h3>Space Explorer</h3>
+                    <p>Leaping over space debris.</p>
+                    <div class="card-tag">SPECIAL</div>
+                </div>
+            </div>
+
+            <button id="start-btn" class="primary-btn">
+                <span>START GAME</span>
+            </button>
+        </div>
+
+        <!-- Game Canvas (Hidden until game starts) -->
+        <canvas id="gameCanvas" width="800" height="300" class="hidden"></canvas>
+        
+        <div class="score-board hidden" id="scoreboard">
+            <span>SCORE: <span id="current-score">00000</span></span>
+            <span>HI: <span id="high-score">00000</span></span>
+        </div>
+    </div>
+
+    <!-- Game Logic JS -->
+    <script src="{{ url_for('static', filename='js/game.js') }}"></script>
+</body>
+</html>

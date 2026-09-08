@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Just Run DINO!</title>
-    <meta name="description" content="Avengers-themed retro runner game featuring Marvel T-Rex, dynamic parallax backgrounds, animated score updates, custom keyboard remapping, dynamic screen tint, advanced particles, and combo meter.">
+    <meta name="description" content="Avengers-themed retro runner featuring Marvel T-Rex, dynamic parallax backgrounds, animated score updates, custom keyboard remapping, dynamic screen tint, advanced particles, combo meter, victory animations, and death replay.">
     <meta property="og:title" content="Just Run DINO!">
-    <meta property="og:description" content="Avengers-themed retro runner game featuring Marvel T-Rex, dynamic parallax backgrounds, animated score updates, custom keyboard remapping, dynamic screen tint, advanced particles, and combo meter.">
+    <meta property="og:description" content="Avengers-themed retro runner featuring Marvel T-Rex, dynamic parallax backgrounds, animated score updates, custom keyboard remapping, dynamic screen tint, advanced particles, combo meter, victory animations, and death replay.">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -89,6 +89,12 @@
                 <button id="start-btn" class="primary-btn">
                     <span>START GAME</span>
                 </button>
+                <button id="replay-launch-btn" class="secondary-btn replay-menu-btn hidden" type="button" title="Watch Instant Death Replay">
+                    <span>📼 DEATH REPLAY</span>
+                </button>
+                <button id="victory-launch-btn" class="secondary-btn victory-menu-btn" type="button" title="Preview Hero Victory Celebration">
+                    <span>🏆 VICTORY CELEBRATION</span>
+                </button>
                 <button id="menu-keybind-btn" class="secondary-btn keybind-menu-btn" type="button" title="Customize Controls">
                     <span>⌨️ CONTROLS</span>
                 </button>
@@ -145,6 +151,64 @@
             <div class="keybind-actions">
                 <button id="keybind-reset-btn" class="secondary-btn" type="button"><span>RESET DEFAULTS</span></button>
                 <button id="keybind-close-btn" class="primary-btn" type="button"><span>SAVE & CLOSE</span></button>
+            </div>
+        </div>
+
+        <!-- Victory Protocol Modal Overlay -->
+        <div id="victory-modal" class="overlay hidden victory-modal">
+            <div class="victory-header-badge">★ MISSION ACCOMPLISHED ★</div>
+            <h1 class="victory-title">VICTORY PROTOCOL!</h1>
+            <div id="victory-hero-banner" class="victory-hero-banner">
+                <!-- Injected via JavaScript based on hero and suit -->
+            </div>
+            <p id="victory-desc" class="victory-desc">Avengers Threat Target eliminated! Exceptional combat reflexes registered.</p>
+
+            <div class="victory-stats-grid">
+                <div class="victory-stat-card">
+                    <span class="stat-label">VICTORY SCORE</span>
+                    <span id="victory-final-score" class="stat-val gold-glow">00000</span>
+                </div>
+                <div class="victory-stat-card">
+                    <span class="stat-label">MAX COMBO</span>
+                    <span id="victory-max-combo" class="stat-val">0x</span>
+                </div>
+                <div class="victory-stat-card">
+                    <span class="stat-label">PROTOCOL</span>
+                    <span id="victory-diff" class="stat-val">AVENGER</span>
+                </div>
+                <div class="victory-stat-card">
+                    <span class="stat-label">TACTICAL RANK</span>
+                    <span id="victory-rank" class="stat-val cyan-glow">S-TIER</span>
+                </div>
+            </div>
+
+            <div class="victory-actions">
+                <button id="victory-continue-btn" class="primary-btn victory-continue-btn" type="button">
+                    <span>🚀 OVERDRIVE (CONTINUE RUN)</span>
+                </button>
+                <button id="victory-replay-btn" class="secondary-btn" type="button">
+                    <span>🏆 REPLAY CELEBRATION</span>
+                </button>
+                <button id="victory-menu-btn" class="secondary-btn" type="button">
+                    <span>HERO SELECT</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Death Replay Flight Recorder HUD (Rendered over active canvas) -->
+        <div id="death-replay-hud" class="death-replay-hud hidden">
+            <div class="replay-top-bar">
+                <div class="replay-badge-group">
+                    <span class="replay-rec-badge"><span class="rec-dot"></span> REC BLACK BOX</span>
+                    <span id="replay-timecode" class="replay-timecode">T-03.40s / IMPACT</span>
+                </div>
+                <span id="replay-status-tag" class="replay-status-tag">FATAL IMPACT DETECTED</span>
+            </div>
+            <div class="replay-controls">
+                <button id="replay-rewind-btn" class="replay-btn" type="button" title="Rewind to beginning of crash">⏮ REWIND</button>
+                <button id="replay-toggle-btn" class="replay-btn" type="button" title="Pause / Play Replay">⏸ PAUSE</button>
+                <button id="replay-speed-btn" class="replay-btn" type="button" title="Cycle slow-motion playback speed">0.4x SLOW-MO</button>
+                <button id="replay-exit-btn" class="replay-btn exit-btn" type="button" title="Exit Replay">✕ EXIT REPLAY</button>
             </div>
         </div>
 

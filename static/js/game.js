@@ -48,6 +48,28 @@ document.addEventListener("DOMContentLoaded", () => {
     const scorePopupAnchor = document.getElementById("score-popup-anchor");
     const controlsHintEl = document.querySelector(".controls-hint");
 
+    // Victory Protocol UI Elements
+    const victoryModal = document.getElementById("victory-modal");
+    const victoryHeroBanner = document.getElementById("victory-hero-banner");
+    const victoryFinalScoreEl = document.getElementById("victory-final-score");
+    const victoryMaxComboEl = document.getElementById("victory-max-combo");
+    const victoryDiffEl = document.getElementById("victory-diff");
+    const victoryRankEl = document.getElementById("victory-rank");
+    const victoryContinueBtn = document.getElementById("victory-continue-btn");
+    const victoryReplayBtn = document.getElementById("victory-replay-btn");
+    const victoryMenuBtn = document.getElementById("victory-menu-btn");
+    const victoryLaunchBtn = document.getElementById("victory-launch-btn");
+
+    // Death Replay Flight Recorder UI Elements
+    const deathReplayHud = document.getElementById("death-replay-hud");
+    const replayLaunchBtn = document.getElementById("replay-launch-btn");
+    const replayTimecodeEl = document.getElementById("replay-timecode");
+    const replayStatusTagEl = document.getElementById("replay-status-tag");
+    const replayRewindBtn = document.getElementById("replay-rewind-btn");
+    const replayToggleBtn = document.getElementById("replay-toggle-btn");
+    const replaySpeedBtn = document.getElementById("replay-speed-btn");
+    const replayExitBtn = document.getElementById("replay-exit-btn");
+
     let selectedCharacter = "dino"; 
     let dinoGearMode = "standard"; // Options: 'standard', 'ironman', 'thor', 'cap', 'thanos'
     let gameRunning = false;
@@ -57,6 +79,29 @@ document.addEventListener("DOMContentLoaded", () => {
     let isNewRecordTriggered = false;
     let highScore = 0;
     let animationId;
+
+    // Victory State Engine
+    const victoryTargets = {
+        rookie: 400,
+        avenger: 800,
+        thanos: 1500
+    };
+    let hasTriggeredVictoryInRun = false;
+    let isVictoryCelebrationActive = false;
+    let victoryCelebrationTimer = 0;
+    let isOverdriveMode = false;
+    let victoryCelebrationParticles = [];
+
+    // Death Replay Flight Recorder Buffer Engine
+    const MAX_REPLAY_FRAMES = 240; // ~4 seconds of high-fidelity 60 FPS recording
+    let deathReplayBuffer = [];
+    let savedDeathReplay = null;
+    let fatalImpactData = null;
+    let isReplaying = false;
+    let replayFrameIndex = 0;
+    let replaySpeed = 0.4;
+    let replayPaused = false;
+    let replayRafId = null;
 
     // --- Dynamic Screen Tint Engine ---
     let screenTint = {
@@ -1067,6 +1112,54 @@ document.addEventListener("DOMContentLoaded", () => {
                     osc.start(now + idx * 0.07);
                     osc.stop(now + idx * 0.07 + 0.18);
                 });
+            } else if (type === 'victory') {
+                // Triumphant 8-note Avengers victory fanfare
+                const fanfareNotes = [
+                    { f: 523.25, t: 0.00, d: 0.22 },
+                    { f: 659.25, t: 0.12, d: 0.22 },
+                    { f: 783.99, t: 0.24, d: 0.22 },
+                    { f: 1046.50, t: 0.36, d: 0.40 },
+                    { f: 880.00, t: 0.60, d: 0.20 },
+                    { f: 1046.50, t: 0.72, d: 0.20 },
+                    { f: 1318.51, t: 0.86, d: 0.24 },
+                    { f: 1567.98, t: 1.02, d: 0.60 }
+                ];
+                fanfareNotes.forEach(n => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(n.f, now + n.t);
+                    gain.gain.setValueAtTime(0.22, now + n.t);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + n.t);
+                    osc.stop(now + n.t + n.d);
+                });
+            } else if (type === 'death_rewind') {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(160, now);
+                osc.frequency.linearRampToValueAtTime(800, now + 0.26);
+                gain.gain.setValueAtTime(0.18, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.28);
+            } else if (type === 'replay_beep') {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(440, now + 0.08);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.08);
             }
         } catch (err) {
             console.warn("Audio playback error:", err);
@@ -2157,11 +2250,82 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // --- Death Replay Button Listeners ---
+    if (replayLaunchBtn) {
+        replayLaunchBtn.addEventListener("click", () => {
+            getAudioContext();
+            startDeathReplay();
+        });
+    }
+
+    if (replayRewindBtn) {
+        replayRewindBtn.addEventListener("click", () => {
+            rewindDeathReplay();
+        });
+    }
+
+    if (replayToggleBtn) {
+        replayToggleBtn.addEventListener("click", () => {
+            toggleDeathReplayPause();
+        });
+    }
+
+    if (replaySpeedBtn) {
+        replaySpeedBtn.addEventListener("click", () => {
+            cycleDeathReplaySpeed();
+        });
+    }
+
+    if (replayExitBtn) {
+        replayExitBtn.addEventListener("click", () => {
+            exitDeathReplay();
+        });
+    }
+
+    // --- Victory Protocol Button Listeners ---
+    if (victoryLaunchBtn) {
+        victoryLaunchBtn.addEventListener("click", () => {
+            getAudioContext();
+            playSfx('select');
+            triggerVictoryCelebration(true);
+        });
+    }
+
+    if (victoryContinueBtn) {
+        victoryContinueBtn.addEventListener("click", () => {
+            if (victoryModal) victoryModal.classList.add("hidden");
+            isOverdriveMode = true;
+            playSfx('select');
+            spawnFloatingText(player.x + 20, player.y - 20, "🚀 OVERDRIVE ACTIVATED!", "#facc15");
+            if (!gameRunning) {
+                gameRunning = true;
+                animationId = requestAnimationFrame(gameLoop);
+            }
+        });
+    }
+
+    if (victoryReplayBtn) {
+        victoryReplayBtn.addEventListener("click", () => {
+            if (victoryModal) victoryModal.classList.add("hidden");
+            playSfx('select');
+            triggerVictoryCelebration(true);
+        });
+    }
+
+    if (victoryMenuBtn) {
+        victoryMenuBtn.addEventListener("click", () => {
+            if (victoryModal) victoryModal.classList.add("hidden");
+            returnToMenu();
+        });
+    }
+
     startBtn.addEventListener("click", () => {
         getAudioContext();
         playSfx('select');
         menuOverlay.classList.add("hidden");
         pauseOverlay.classList.add("hidden");
+        if (victoryModal) victoryModal.classList.add("hidden");
+        if (deathReplayHud) deathReplayHud.classList.add("hidden");
         canvas.classList.remove("hidden");
         scoreboard.classList.remove("hidden");
         pauseBtn.classList.remove("hidden");
@@ -2319,6 +2483,15 @@ document.addEventListener("DOMContentLoaded", () => {
         comboTimer = 0;
         comboMultiplier = 1.0;
         comboScalePulse = 1.0;
+        hasTriggeredVictoryInRun = false;
+        isVictoryCelebrationActive = false;
+        victoryCelebrationTimer = 0;
+        isOverdriveMode = false;
+        victoryCelebrationParticles = [];
+        deathReplayBuffer = [];
+        if (replayLaunchBtn) replayLaunchBtn.classList.add("hidden");
+        if (victoryModal) victoryModal.classList.add("hidden");
+        if (deathReplayHud) deathReplayHud.classList.add("hidden");
         resetScreenTint();
         updateComboUI();
         initWeatherParticles(weatherTypes[0].id);
@@ -2344,12 +2517,21 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // --- Custom Vector Drawings ---
-    function drawPlayer(x, y) {
+    function drawPlayer(x, y, charOverride = null, gearOverride = null, pose = 'normal') {
         ctx.save();
         ctx.translate(x, y);
 
-        if (selectedCharacter === 'dino') {
-            if (dinoGearMode === 'ironman') {
+        const char = charOverride || selectedCharacter;
+        const gear = gearOverride || dinoGearMode;
+
+        // Overdrive golden hero aura
+        if (isOverdriveMode && pose !== 'victory') {
+            ctx.shadowColor = '#facc15';
+            ctx.shadowBlur = 18;
+        }
+
+        if (char === 'dino') {
+            if (gear === 'ironman') {
                 ctx.fillStyle = '#dc2626'; // Red armor
                 ctx.fillRect(0, 20, 18, 10);
                 ctx.fillRect(14, 14, 32, 24);
@@ -2359,12 +2541,40 @@ document.addEventListener("DOMContentLoaded", () => {
                 ctx.fillRect(26, 22, 6, 6);
                 ctx.fillStyle = '#38bdf8';
                 ctx.fillRect(27, 23, 4, 4);
-                const legOffset = player.isJumping ? 4 : Math.sin(Date.now() / 65) * 8;
+                const legOffset = (player.isJumping || pose === 'victory') ? 4 : Math.sin(Date.now() / 65) * 8;
                 ctx.fillStyle = '#991b1b';
                 ctx.fillRect(20, 38, 8, 12 + legOffset);
                 ctx.fillRect(34, 38, 8, 12 - legOffset);
 
-            } else if (dinoGearMode === 'thor') {
+                // Victory Pose Jet Thrusters & Chest Unibeam
+                if (pose === 'victory') {
+                    // Boots Jet Exhaust Flames
+                    ctx.fillStyle = '#38bdf8';
+                    ctx.fillRect(21, 52, 6, 18 + Math.sin(Date.now() / 25) * 6);
+                    ctx.fillRect(35, 52, 6, 18 + Math.cos(Date.now() / 25) * 6);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(22, 52, 4, 10);
+                    ctx.fillRect(36, 52, 4, 10);
+
+                    // Massive Skyward Arc Reactor Unibeam
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(56, 189, 248, 0.75)';
+                    ctx.shadowColor = '#38bdf8';
+                    ctx.shadowBlur = 24;
+                    ctx.fillRect(27, -250, 6, 270);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(28, -250, 4, 270);
+                    // Pulsing shockwave rings going up
+                    const ringY = (Date.now() / 3) % 250;
+                    ctx.strokeStyle = '#38bdf8';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.ellipse(30, 20 - ringY, 14, 5, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+            } else if (gear === 'thor') {
                 // --- THOR T-REX (With Red Cape & Mjolnir Hammer) ---
                 ctx.fillStyle = '#b91c1c'; // Flowing red cape
                 ctx.fillRect(10, 16, 12, 18);
@@ -2375,17 +2585,27 @@ document.addEventListener("DOMContentLoaded", () => {
                 ctx.fillRect(34, 4, 4, 8);
 
                 // Mjolnir Hammer in hand!
-                ctx.fillStyle = '#64748b'; // Hammer head
-                ctx.fillRect(54, 14, 10, 8);
-                ctx.fillStyle = '#78350f'; // Handle
-                ctx.fillRect(52, 20, 3, 8);
+                if (pose === 'victory') {
+                    ctx.fillStyle = '#78350f'; // Handle
+                    ctx.fillRect(52, -4, 4, 18);
+                    ctx.fillStyle = '#94a3b8'; // Hammer head raised high
+                    ctx.shadowColor = '#facc15';
+                    ctx.shadowBlur = 20;
+                    ctx.fillRect(48, -14, 14, 10);
+                    ctx.shadowBlur = 0;
+                } else {
+                    ctx.fillStyle = '#64748b'; // Hammer head
+                    ctx.fillRect(54, 14, 10, 8);
+                    ctx.fillStyle = '#78350f'; // Handle
+                    ctx.fillRect(52, 20, 3, 8);
+                }
 
-                const legOffset = player.isJumping ? 4 : Math.sin(Date.now() / 65) * 8;
+                const legOffset = (player.isJumping || pose === 'victory') ? 4 : Math.sin(Date.now() / 65) * 8;
                 ctx.fillStyle = '#1e293b';
                 ctx.fillRect(20, 38, 8, 12 + legOffset);
                 ctx.fillRect(34, 38, 8, 12 - legOffset);
 
-            } else if (dinoGearMode === 'cap') {
+            } else if (gear === 'cap') {
                 // --- CAPTAIN AMERICA T-REX (Vibranium Shield & Helmet) ---
                 ctx.fillStyle = '#1d4ed8'; // Blue suit body
                 ctx.fillRect(0, 20, 18, 10);
@@ -2394,26 +2614,45 @@ document.addEventListener("DOMContentLoaded", () => {
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(46, 6, 4, 6);   // 'A' symbol
 
-                // Iconic Circular Shield
-                ctx.fillStyle = '#dc2626'; // Outer red ring
-                ctx.beginPath();
-                ctx.arc(55, 22, 10, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = '#ffffff'; // White ring
-                ctx.beginPath();
-                ctx.arc(55, 22, 7, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = '#1d4ed8'; // Blue center with star
-                ctx.beginPath();
-                ctx.arc(55, 22, 4, 0, Math.PI * 2);
-                ctx.fill();
+                if (pose === 'victory') {
+                    // Shield orbiting around Dino
+                    const orbitAngle = Date.now() / 150;
+                    const shX = 30 + Math.cos(orbitAngle) * 35;
+                    const shY = 22 + Math.sin(orbitAngle) * 14;
+                    ctx.save();
+                    ctx.shadowColor = '#3b82f6';
+                    ctx.shadowBlur = 18;
+                    ctx.fillStyle = '#dc2626';
+                    ctx.beginPath(); ctx.arc(shX, shY, 11, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath(); ctx.arc(shX, shY, 8, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#1d4ed8';
+                    ctx.beginPath(); ctx.arc(shX, shY, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(shX - 2, shY - 2, 4, 4);
+                    ctx.restore();
+                } else {
+                    // Iconic Circular Shield
+                    ctx.fillStyle = '#dc2626'; // Outer red ring
+                    ctx.beginPath();
+                    ctx.arc(55, 22, 10, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#ffffff'; // White ring
+                    ctx.beginPath();
+                    ctx.arc(55, 22, 7, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#1d4ed8'; // Blue center with star
+                    ctx.beginPath();
+                    ctx.arc(55, 22, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
 
-                const legOffset = player.isJumping ? 4 : Math.sin(Date.now() / 65) * 8;
+                const legOffset = (player.isJumping || pose === 'victory') ? 4 : Math.sin(Date.now() / 65) * 8;
                 ctx.fillStyle = '#1d4ed8';
                 ctx.fillRect(20, 38, 8, 12 + legOffset);
                 ctx.fillRect(34, 38, 8, 12 - legOffset);
 
-            } else if (dinoGearMode === 'thanos') {
+            } else if (gear === 'thanos') {
                 // --- THANOS INFINITY GAUNTLET T-REX ---
                 ctx.fillStyle = '#7e22ce'; // Titan purple armor
                 ctx.fillRect(0, 20, 18, 10);
@@ -2421,14 +2660,32 @@ document.addEventListener("DOMContentLoaded", () => {
                 ctx.fillRect(36, 2, 22, 18);
 
                 // Gold Infinity Gauntlet with Glowing Stones
+                const gauntletY = pose === 'victory' ? 6 : 16;
                 ctx.fillStyle = '#f59e0b'; // Gold gauntlet glove
-                ctx.fillRect(50, 16, 12, 12);
-                // Glowing Infinity Stones (Blue, Red, Purple, Green, Yellow, Orange)
-                ctx.fillStyle = '#38bdf8'; ctx.fillRect(52, 18, 2, 2);
-                ctx.fillStyle = '#ef4444'; ctx.fillRect(56, 18, 2, 2);
-                ctx.fillStyle = '#10b981'; ctx.fillRect(60, 18, 2, 2);
+                ctx.fillRect(50, gauntletY, 12, 12);
+                
+                // Glowing Infinity Stones
+                const colors = ['#38bdf8', '#ef4444', '#10b981', '#facc15', '#a855f7', '#fb923c'];
+                colors.forEach((col, idx) => {
+                    ctx.fillStyle = col;
+                    ctx.fillRect(51 + (idx % 3) * 4, gauntletY + (idx < 3 ? 2 : 7), 3, 3);
+                });
 
-                const legOffset = player.isJumping ? 4 : Math.sin(Date.now() / 65) * 8;
+                if (pose === 'victory') {
+                    // Cosmic Rainbow Shockwave Flare
+                    ctx.save();
+                    const pulse = (Math.sin(Date.now() / 80) + 1) * 6;
+                    ctx.strokeStyle = '#c084fc';
+                    ctx.shadowColor = '#c084fc';
+                    ctx.shadowBlur = 20;
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(56, gauntletY + 6, 16 + pulse, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                const legOffset = (player.isJumping || pose === 'victory') ? 4 : Math.sin(Date.now() / 65) * 8;
                 ctx.fillStyle = '#581c87';
                 ctx.fillRect(20, 38, 8, 12 + legOffset);
                 ctx.fillRect(34, 38, 8, 12 - legOffset);
@@ -2439,24 +2696,44 @@ document.addEventListener("DOMContentLoaded", () => {
                 ctx.fillRect(0, 20, 18, 10);
                 ctx.fillRect(14, 14, 32, 24);
                 ctx.fillRect(36, 2, 22, 18);
-                const legOffset = player.isJumping ? 4 : Math.sin(Date.now() / 65) * 8;
+                const legOffset = (player.isJumping || pose === 'victory') ? 4 : Math.sin(Date.now() / 65) * 8;
                 ctx.fillRect(20, 38, 8, 12 + legOffset);
                 ctx.fillRect(34, 38, 8, 12 - legOffset);
+
+                if (pose === 'victory') {
+                    // Golden Crown on Dinosaur head!
+                    ctx.fillStyle = '#facc15';
+                    ctx.shadowColor = '#facc15';
+                    ctx.shadowBlur = 12;
+                    ctx.fillRect(40, -4, 16, 6);
+                    ctx.fillRect(38, -8, 4, 5);
+                    ctx.fillRect(46, -10, 4, 7);
+                    ctx.fillRect(54, -8, 4, 5);
+                    ctx.shadowBlur = 0;
+                }
             }
 
-        } else if (selectedCharacter === 'developer') {
+        } else if (char === 'developer') {
             ctx.fillStyle = '#374151';
             ctx.fillRect(6, 12, 22, 14);
             ctx.fillStyle = '#00ff66';
             ctx.fillRect(8, 4, 18, 10);
             ctx.fillStyle = '#f59e0b';
             ctx.fillRect(14, -6, 10, 10);
-            const legOffset = player.isJumping ? 2 : Math.sin(Date.now() / 70) * 6;
+            const legOffset = (player.isJumping || pose === 'victory') ? 2 : Math.sin(Date.now() / 70) * 6;
             ctx.fillStyle = '#6b7280';
             ctx.fillRect(10, 26, 4, 10 + legOffset);
             ctx.fillRect(20, 26, 4, 10 - legOffset);
 
-        } else if (selectedCharacter === 'astronaut') {
+            if (pose === 'victory') {
+                // Raising coffee mug
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(30, 2, 8, 10);
+                ctx.fillStyle = '#f59e0b';
+                ctx.fillRect(32, 4, 4, 2);
+            }
+
+        } else if (char === 'astronaut') {
             ctx.fillStyle = '#f8fafc';
             ctx.beginPath();
             ctx.moveTo(0, 12);
@@ -2470,6 +2747,17 @@ document.addEventListener("DOMContentLoaded", () => {
             ctx.fill();
             ctx.fillStyle = '#f97316';
             ctx.fillRect(-10 + Math.sin(Date.now() / 30) * 3, 12, 10, 12);
+
+            if (pose === 'victory') {
+                // Glowing Avengers mission flag
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(20, -16, 3, 28);
+                ctx.fillStyle = '#3b82f6';
+                ctx.fillRect(23, -16, 18, 12);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '7px "Press Start 2P", monospace';
+                ctx.fillText('A', 26, -7);
+            }
         }
 
         ctx.restore();

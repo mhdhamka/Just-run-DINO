@@ -999,3 +999,300 @@ canvas {
     gap: 14px;
     justify-content: center;
 }
+
+/* ==========================================================================
+   DEATH REPLAY (BLACK BOX FLIGHT RECORDER & KILL-CAM)
+   ========================================================================== */
+
+.death-replay-hud {
+    position: absolute;
+    top: 12px;
+    left: 16px;
+    right: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(10, 14, 24, 0.88);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 15px rgba(239, 68, 68, 0.25);
+    border-radius: 10px;
+    padding: 8px 14px;
+    z-index: 25;
+    backdrop-filter: blur(6px);
+    pointer-events: auto;
+    animation: fadeInReplay 0.25s ease-out;
+}
+
+@keyframes fadeInReplay {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.replay-top-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.replay-badge-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.replay-rec-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    border-radius: 4px;
+    padding: 4px 8px;
+    letter-spacing: 0.5px;
+}
+
+.rec-dot {
+    width: 7px;
+    height: 7px;
+    background-color: #ef4444;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #ef4444;
+    animation: recBlink 0.9s infinite alternate ease-in-out;
+}
+
+@keyframes recBlink {
+    0% { opacity: 0.25; transform: scale(0.85); }
+    100% { opacity: 1; transform: scale(1.15); }
+}
+
+.replay-timecode {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    color: #facc15;
+    text-shadow: 0 0 6px rgba(250, 204, 21, 0.5);
+    letter-spacing: 0.5px;
+}
+
+.replay-status-tag {
+    font-size: 11px;
+    color: #fca5a5;
+    background: rgba(220, 38, 38, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 4px;
+    padding: 3px 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.replay-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.replay-btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    background: rgba(30, 41, 59, 0.85);
+    color: #e2e8f0;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.replay-btn:hover {
+    background: rgba(51, 65, 85, 0.95);
+    border-color: #38bdf8;
+    color: #38bdf8;
+    transform: translateY(-1px);
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+.replay-btn.active {
+    background: rgba(56, 189, 248, 0.2);
+    border-color: #38bdf8;
+    color: #38bdf8;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+.replay-btn.exit-btn {
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.12);
+}
+
+.replay-btn.exit-btn:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: #ef4444;
+    color: #ffffff;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
+}
+
+.replay-menu-btn {
+    border-color: rgba(239, 68, 68, 0.5) !important;
+    color: #fca5a5 !important;
+    background: rgba(239, 68, 68, 0.12) !important;
+    animation: replayPulseBtn 1.5s infinite alternate ease-in-out;
+}
+
+@keyframes replayPulseBtn {
+    0% { border-color: rgba(239, 68, 68, 0.4); box-shadow: 0 0 8px rgba(239, 68, 68, 0.2); }
+    100% { border-color: rgba(239, 68, 68, 0.8); box-shadow: 0 0 16px rgba(239, 68, 68, 0.5); }
+}
+
+.replay-menu-btn:hover {
+    background: rgba(239, 68, 68, 0.25) !important;
+    color: #ffffff !important;
+}
+
+/* ==========================================================================
+   VICTORY PROTOCOL & CELEBRATION MODAL
+   ========================================================================== */
+
+.victory-modal {
+    max-width: 620px;
+    padding: 26px 28px;
+    border-color: rgba(250, 204, 21, 0.4);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.85), 0 0 35px rgba(250, 204, 21, 0.25);
+    background: radial-gradient(circle at 50% 15%, rgba(40, 32, 10, 0.95) 0%, rgba(13, 17, 23, 0.98) 100%);
+    animation: victoryModalEntry 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes victoryModalEntry {
+    from { opacity: 0; transform: scale(0.92) translateY(12px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.victory-header-badge {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    padding: 5px 14px;
+    background: linear-gradient(90deg, rgba(250, 204, 21, 0.2), rgba(245, 158, 11, 0.3));
+    color: #fde047;
+    border: 1px solid rgba(250, 204, 21, 0.6);
+    border-radius: 20px;
+    margin-bottom: 12px;
+    display: inline-block;
+    box-shadow: 0 0 15px rgba(250, 204, 21, 0.35);
+    letter-spacing: 1px;
+}
+
+.victory-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 18px;
+    color: #facc15;
+    text-shadow: 0 0 18px rgba(250, 204, 21, 0.65), 0 0 35px rgba(245, 158, 11, 0.4);
+    margin-bottom: 12px;
+    letter-spacing: 1px;
+}
+
+.victory-hero-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: rgba(250, 204, 21, 0.08);
+    border: 1px solid rgba(250, 204, 21, 0.25);
+    border-radius: 12px;
+    padding: 12px 18px;
+    margin-bottom: 14px;
+}
+
+.victory-hero-icon {
+    font-size: 32px;
+    filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.6));
+    animation: victoryBounce 0.8s infinite alternate ease-in-out;
+}
+
+@keyframes victoryBounce {
+    0% { transform: translateY(0) scale(1); }
+    100% { transform: translateY(-4px) scale(1.08); }
+}
+
+.victory-hero-text {
+    text-align: left;
+}
+
+.victory-hero-name {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: #fef08a;
+    margin-bottom: 4px;
+}
+
+.victory-hero-badge {
+    font-size: 11px;
+    color: #38bdf8;
+    letter-spacing: 0.5px;
+}
+
+.victory-desc {
+    font-size: 12px;
+    color: #d1d5db;
+    margin-bottom: 18px;
+    line-height: 1.5;
+}
+
+.victory-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 22px;
+}
+
+.victory-stat-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 10px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.victory-stat-card .stat-val.gold-glow {
+    color: #facc15;
+    text-shadow: 0 0 10px rgba(250, 204, 21, 0.6);
+}
+
+.victory-stat-card .stat-val.cyan-glow {
+    color: #38bdf8;
+    text-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+}
+
+.victory-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    width: 100%;
+}
+
+.victory-continue-btn {
+    background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%) !important;
+    border-color: #facc15 !important;
+    box-shadow: 0 4px 0 #78350f, 0 0 20px rgba(250, 204, 21, 0.5) !important;
+}
+
+.victory-continue-btn:hover {
+    box-shadow: 0 4px 0 #78350f, 0 0 30px rgba(250, 204, 21, 0.8) !important;
+    transform: translateY(-2px);
+}
+
+.victory-menu-btn {
+    border-color: rgba(250, 204, 21, 0.4) !important;
+    color: #fde047 !important;
+    background: rgba(250, 204, 21, 0.08) !important;
+}
+
+.victory-menu-btn:hover {
+    background: rgba(250, 204, 21, 0.2) !important;
+    border-color: #facc15 !important;
+}

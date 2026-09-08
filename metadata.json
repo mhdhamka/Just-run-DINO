@@ -1,0 +1,8 @@
+{
+  "name": "Just Run DINO!",
+  "description": "Avengers-themed retro runner game featuring Marvel T-Rex, dynamic parallax backgrounds, animated score updates, custom keyboard remapping, dynamic screen tint, advanced particles, and combo meter.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

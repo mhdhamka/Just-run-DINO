@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Just Run DINO! - Avengers Edition</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <title>Just Run DINO!</title>
+    <meta name="description" content="Avengers-themed retro runner game featuring Marvel T-Rex, dynamic parallax backgrounds, animated score updates, custom keyboard remapping, dynamic screen tint, advanced particles, and combo meter.">
+    <meta property="og:title" content="Just Run DINO!">
+    <meta property="og:description" content="Avengers-themed retro runner game featuring Marvel T-Rex, dynamic parallax backgrounds, animated score updates, custom keyboard remapping, dynamic screen tint, advanced particles, and combo meter.">
+    <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
 
@@ -12,11 +15,30 @@
         <!-- Retro Scanline Effect Layer -->
         <div class="scanlines"></div>
 
-        <!-- Character Selection Menu Overlay -->
+        <!-- Top Control Bar (SFX + Keybinds + Pause Button) -->
+        <div class="top-controls">
+            <button id="sfx-toggle-btn" class="sfx-toggle" aria-label="Toggle Sound Effects" title="Toggle Sound Effects (Key 'M')">
+                <span id="sfx-icon" class="sfx-icon">🔊</span>
+                <span id="sfx-label" class="sfx-label">SFX ON</span>
+            </button>
+            <button id="keybind-toggle-btn" class="keybind-toggle" aria-label="Remap Controls" title="Customize Controls (Keyboard Remapping)">
+                <span class="keybind-icon">⌨️</span>
+                <span class="keybind-label">KEYS</span>
+            </button>
+            <button id="pause-btn" class="pause-btn hidden" aria-label="Pause Game" title="Pause / Resume Game">
+                <span id="pause-icon" class="pause-icon">⏸</span>
+                <span id="pause-label" class="pause-label">PAUSE</span>
+            </button>
+        </div>
+
+        <!-- Active Power-Ups HUD Bar -->
+        <div id="powerup-hud" class="powerup-hud hidden"></div>
+
+        <!-- Character & Difficulty Selection Menu Overlay -->
         <div id="menu-overlay" class="overlay">
             <div class="header-badge">AVENGERS PROTOCOL V2.0</div>
             <h1>Just Run DINO!</h1>
-            <p>Press 'E' to switch Marvel Gear on the T-Rex & 'F' to attack Galactus!</p>
+            <p class="controls-hint">JUMP: [Space/Up] • ATTACK: [F] • SUIT: [E] • PAUSE: [P] • MUTE: [M]</p>
             
             <div class="character-grid">
                 <!-- Character Card 1: T-Rex (Avengers Gear) -->
@@ -44,21 +66,101 @@
                 </div>
             </div>
 
-            <button id="start-btn" class="primary-btn">
-                <span>START GAME</span>
-            </button>
+            <!-- Difficulty Protocol Selector -->
+            <div class="difficulty-section">
+                <div class="difficulty-header">SELECT THREAT LEVEL</div>
+                <div class="difficulty-grid">
+                    <button type="button" class="diff-btn" data-diff="rookie">
+                        <span class="diff-title">ROOKIE</span>
+                        <span class="diff-desc">Relaxed • 1.0x Points</span>
+                    </button>
+                    <button type="button" class="diff-btn selected" data-diff="avenger">
+                        <span class="diff-title">AVENGER</span>
+                        <span class="diff-desc">Standard • 1.25x Points</span>
+                    </button>
+                    <button type="button" class="diff-btn" data-diff="thanos">
+                        <span class="diff-title">THANOS SNAP</span>
+                        <span class="diff-desc">Insane Speed • 2.0x Points</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="menu-actions">
+                <button id="start-btn" class="primary-btn">
+                    <span>START GAME</span>
+                </button>
+                <button id="menu-keybind-btn" class="secondary-btn keybind-menu-btn" type="button" title="Customize Controls">
+                    <span>⌨️ CONTROLS</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Tactical Pause Overlay -->
+        <div id="pause-overlay" class="overlay hidden">
+            <div class="header-badge warning-badge">TACTICAL PAUSE</div>
+            <h2>MISSION SUSPENDED</h2>
+            <p id="pause-stats-text">Battle simulation frozen. Ready to resume fight?</p>
+            
+            <div class="pause-stat-grid">
+                <div class="pause-stat-card">
+                    <span class="stat-label">ACTIVE SCORE</span>
+                    <span id="pause-current-score" class="stat-val">00000</span>
+                </div>
+                <div class="pause-stat-card">
+                    <span class="stat-label">THREAT LEVEL</span>
+                    <span id="pause-difficulty" class="stat-val">AVENGER</span>
+                </div>
+                <div class="pause-stat-card">
+                    <span class="stat-label">WEATHER</span>
+                    <span id="pause-weather" class="stat-val">CLEAR ☀️</span>
+                </div>
+                <div class="pause-stat-card">
+                    <span class="stat-label">POWER BUFFS</span>
+                    <span id="pause-buff-count" class="stat-val">NONE</span>
+                </div>
+                <div class="pause-stat-card">
+                    <span class="stat-label">MAX COMBO</span>
+                    <span id="pause-max-combo" class="stat-val">0x</span>
+                </div>
+            </div>
+
+            <div class="pause-actions">
+                <button id="resume-btn" class="primary-btn"><span>RESUME</span></button>
+                <button id="pause-keybind-btn" class="secondary-btn"><span>KEYS ⌨️</span></button>
+                <button id="restart-btn" class="secondary-btn"><span>RESTART</span></button>
+                <button id="menu-btn" class="secondary-btn"><span>HERO SELECT</span></button>
+            </div>
+        </div>
+
+        <!-- Cybernetic Keyboard Remapping Modal -->
+        <div id="keybind-modal" class="overlay hidden keybind-modal">
+            <div class="header-badge cyan-badge">NEURAL LINK HARDWARE</div>
+            <h2>CONTROLS REMAPPING</h2>
+            <p id="keybind-status-hint">Click on any action slot below, then press your desired key to rebind.</p>
+            
+            <div class="keybind-grid" id="keybind-grid">
+                <!-- Dynamically populated keybind items -->
+            </div>
+
+            <div class="keybind-actions">
+                <button id="keybind-reset-btn" class="secondary-btn" type="button"><span>RESET DEFAULTS</span></button>
+                <button id="keybind-close-btn" class="primary-btn" type="button"><span>SAVE & CLOSE</span></button>
+            </div>
         </div>
 
         <!-- Game Canvas (Hidden until game starts) -->
         <canvas id="gameCanvas" width="800" height="300" class="hidden"></canvas>
         
         <div class="score-board hidden" id="scoreboard">
-            <span>SCORE: <span id="current-score">00000</span></span>
-            <span>HI: <span id="high-score">00000</span></span>
+            <span>DIFF: <span id="diff-badge">AVENGER</span></span>
+            <span>ENV: <span id="weather-badge">CLEAR ☀️</span></span>
+            <span>COMBO: <span id="combo-badge">0x (1.0x)</span></span>
+            <span class="score-display-wrapper">SCORE: <span id="current-score" class="score-number">00000</span><span id="score-popup-anchor" class="score-popup-anchor"></span></span>
+            <span class="high-score-wrapper">HI: <span id="high-score" class="score-number">00000</span></span>
         </div>
     </div>
 
     <!-- Game Logic JS -->
-    <script src="{{ url_for('static', filename='js/game.js') }}"></script>
+    <script src="/static/js/game.js"></script>
 </body>
 </html>

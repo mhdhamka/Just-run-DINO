@@ -1,12 +1,18 @@
-# Just Run DINO! 🦖🚀
+<div align="center">
+
+# Just Run DINO! 🦖🚀🤖
 
 **Just Run DINO!** is an action-packed, arcade-style offline runner game built with HTML5 Canvas, JavaScript, and a Flask/Node backend. Choose your champion from a multiverse of heroes, transform into legendary suits or vehicles on the fly, dodge active chaser bosses, and blast your way through high-intensity obstacles!
+
+[Live Demo](https://https://just-run-dino.onrender.com/) · [Report Bug](https://github.com/mhdhamka/Just-run-DINO/issues) · [Request Feature](https://github.com/mhdhamka/Just-run-DINO/issues)
 
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-Backend-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![JavaScript](https://img.shields.io/badge/JavaScript-ES6+-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)](https://developer.mozilla.org/)
 [![HTML Canvas](https://img.shields.io/badge/HTML5-Canvas-E34F26?style=for-the-badge&logo=html5&logoColor=white)](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+
+</div>
 
 ---
 
@@ -17,7 +23,7 @@
   * 🚀 **Astronaut / Transformer:** Start as an Astronaut or Rocket Ship, and transform into **Optimus Prime** or **Bumblebee** to drive on the ground or take flight in the skies.
   * 💻 **Developer:** Code your way through obstacles or transform into **Ultron** and **Vision** with custom cyber-projectile attacks.
 * **Interactive Chaser Boss Threats:** 
-  * **Doomsday:** Relentlessly chases the Dino from behind, periodically slamming the ground to launch shockwaves you must time your jumps against.
+  * 🦖 **Doomsday:** Relentlessly chases the Dino from behind, periodically slamming the ground to launch shockwaves you must time your jumps against.
   * 🤖 **Megatron:** Actively hunts down the Astronaut/Transformers, firing precise plasma beams that require ducking or altitude shifts.
 * **Advanced Arcade Systems:**
   * ⚡ **Energon / Overdrive Meter:** Fill your gauge by collecting energy nodes or pulling off close dodges to trigger a 10-second neon **Overdrive Ultimate State** with full invincibility and auto-shredding power.

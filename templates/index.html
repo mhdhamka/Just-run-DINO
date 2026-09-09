@@ -2,8 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Just Run DINO! • Avengers Protocol</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#16161a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦖</text></svg>">
+    <title>Just Run DINO!</title>
     <meta name="description" content="Avengers-themed retro runner featuring Marvel T-Rex, dynamic parallax backgrounds, animated score updates, custom keyboard remapping, dynamic screen tint, advanced particles, combo meter, victory animations, and death replay.">
     <meta property="og:title" content="Just Run DINO!">
     <meta property="og:description" content="Avengers-themed retro runner featuring Marvel T-Rex, dynamic parallax backgrounds, animated score updates, custom keyboard remapping, dynamic screen tint, advanced particles, combo meter, victory animations, and death replay.">
@@ -52,7 +57,10 @@
         <main id="menu-overlay" class="overlay">
             <div class="header-badge">AVENGERS PROTOCOL V2.0</div>
             <h1>Just Run DINO!</h1>
-            <p class="controls-hint">JUMP: [Space/Up] • ATTACK: [F] • SUIT: [E] • PAUSE: [P] • MUTE: [M] • OVERDRIVE: [E] WHEN FULL</p>
+            <p class="controls-hint">
+                <span class="desktop-hint">JUMP: [Space/Up] • ATTACK: [F] • SUIT: [E] • PAUSE: [P] • MUTE: [M] • OVERDRIVE: [E] WHEN FULL</span>
+                <span class="mobile-hint">MOBILE: Tap Left = Jump/Fly • Tap Right = Attack • Tap HUD Buttons Below</span>
+            </p>
             
             <section class="character-selection-section" aria-label="Character Selection">
                 <div class="character-grid">
@@ -239,6 +247,19 @@
             <span class="score-display-wrapper">SCORE: <span id="current-score" class="score-number">00000</span><span id="score-popup-anchor" class="score-popup-anchor" aria-hidden="true"></span></span>
             <span class="high-score-wrapper">HI: <span id="high-score" class="score-number">00000</span></span>
         </aside>
+
+        <!-- Mobile Touch Action Controls (Tactical on-screen buttons for touchscreens) -->
+        <nav id="mobile-controls-bar" class="mobile-controls-bar hidden" aria-label="Mobile Touch Action Controls">
+            <button id="touch-jump-btn" class="touch-ctrl-btn touch-jump-btn" type="button" aria-label="Jump or Fly">
+                <span class="touch-label">JUMP</span>
+            </button>
+            <button id="touch-suit-btn" class="touch-ctrl-btn touch-suit-btn" type="button" aria-label="Cycle Suit or Overdrive">
+                <span id="touch-suit-label" class="touch-label">SUIT</span>
+            </button>
+            <button id="touch-attack-btn" class="touch-ctrl-btn touch-attack-btn" type="button" aria-label="Attack or Fire">
+                <span class="touch-label">ATTACK</span>
+            </button>
+        </nav>
     </div>
 
     <!-- Game Logic JS -->

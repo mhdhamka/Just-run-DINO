@@ -76,6 +76,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const energonStatus = document.getElementById("energon-status");
     const bossWarningEl = document.getElementById("boss-warning");
 
+    // Mobile Touch Action UI Elements
+    const mobileControlsBar = document.getElementById("mobile-controls-bar");
+    const touchJumpBtn = document.getElementById("touch-jump-btn");
+    const touchSuitBtn = document.getElementById("touch-suit-btn");
+    const touchAttackBtn = document.getElementById("touch-attack-btn");
+
     let selectedCharacter = "dino"; 
     let dinoGearMode = "standard"; // Options: 'standard', 'ironman', 'thor', 'cap', 'thanos'
     let astronautFormMode = "rocket"; // Options: 'rocket' (flight), 'optimus' (ground vehicle), 'bumblebee' (ground vehicle)
@@ -100,6 +106,21 @@ document.addEventListener("DOMContentLoaded", () => {
     let victoryCelebrationTimer = 0;
     let isOverdriveMode = false;
     let victoryCelebrationParticles = [];
+
+    // Death Sequence State Engine
+    let isDying = false;
+    let deathSequenceTimer = 0;
+    const deathDuration = 85; // ~1.4 seconds of dramatic slow-mo tumble & impact before crash menu
+    let deathPlayerState = {
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        rotation: 0,
+        rotSpeed: 0,
+        bounceCount: 0,
+        cause: ''
+    };
 
     // Death Replay Flight Recorder Buffer Engine
     const MAX_REPLAY_FRAMES = 240; // ~4 seconds of high-fidelity 60 FPS recording
@@ -916,6 +937,31 @@ document.addEventListener("DOMContentLoaded", () => {
                 gain.connect(ctx.destination);
                 osc.start(now);
                 osc.stop(now + 0.4);
+            } else if (type === 'death_shatter') {
+                // Heavy catastrophic impact crunch + deep rumble
+                const osc1 = ctx.createOscillator();
+                const gain1 = ctx.createGain();
+                osc1.type = 'sawtooth';
+                osc1.frequency.setValueAtTime(160, now);
+                osc1.frequency.exponentialRampToValueAtTime(25, now + 0.45);
+                gain1.gain.setValueAtTime(0.35, now);
+                gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+                osc1.connect(gain1);
+                gain1.connect(ctx.destination);
+                osc1.start(now);
+                osc1.stop(now + 0.45);
+
+                const osc2 = ctx.createOscillator();
+                const gain2 = ctx.createGain();
+                osc2.type = 'square';
+                osc2.frequency.setValueAtTime(80, now);
+                osc2.frequency.exponentialRampToValueAtTime(15, now + 0.55);
+                gain2.gain.setValueAtTime(0.3, now);
+                gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+                osc2.connect(gain2);
+                gain2.connect(ctx.destination);
+                osc2.start(now);
+                osc2.stop(now + 0.55);
             } else if (type === 'select') {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
@@ -1183,10 +1229,42 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function getPlayerBaseX() {
+        // Responsive base X stance: on mobile/compact screens, ~22% of canvas width (min 75px, max 130px);
+        // on desktop/wide screens, ~26% of canvas width (min 160px, max 280px).
+        // This reserves a clear horizon of ~74-78% ahead for hazards, while granting
+        // ample rear battlefield space (~22-26%) to see and evade active chasers from behind!
+        const width = canvas && canvas.width ? canvas.width : 1000;
+        const isMobile = width < 640;
+        const minX = isMobile ? 75 : 160;
+        const maxX = isMobile ? 130 : 280;
+        return Math.max(minX, Math.min(maxX, Math.round(width * (isMobile ? 0.22 : 0.26))));
+    }
+
+    let player = {
+        x: 120,
+        baseX: 120,
+        targetX: 120,
+        y: 0,
+        width: 62,
+        height: 48,
+        vy: 0,
+        gravity: 0.5,
+        jumpPower: -10,
+        isJumping: false
+    };
+
     function resizeCanvas() {
         const rect = canvas.getBoundingClientRect();
         canvas.width = rect.width || 1000;
         canvas.height = rect.height || 400;
+        if (player) {
+            player.baseX = getPlayerBaseX();
+            if (!gameRunning) {
+                player.x = player.baseX;
+                player.targetX = player.baseX;
+            }
+        }
     }
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
@@ -1318,16 +1396,10 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    let player = {
-        x: 60,
-        y: 0,
-        width: 62,
-        height: 48,
-        vy: 0,
-        gravity: 0.5,
-        jumpPower: -10,
-        isJumping: false
-    };
+    const initBaseX = getPlayerBaseX();
+    player.x = initBaseX;
+    player.baseX = initBaseX;
+    player.targetX = initBaseX;
 
     function updatePlayerDimensions() {
         let baseWidth, baseHeight;
@@ -1542,6 +1614,12 @@ document.addEventListener("DOMContentLoaded", () => {
         if (Math.floor(score / diffCfg.scoreInterval) > Math.floor(prevScore / diffCfg.scoreInterval)) {
             gameSpeed += diffCfg.speedInc;
             playSfx('score_milestone');
+        }
+
+        // Check Victory Protocol Mission Milestone
+        const targetScore = victoryTargets[currentDiff] || 800;
+        if (score >= targetScore && !hasTriggeredVictoryInRun && !isOverdriveMode) {
+            triggerVictoryCelebration(false);
         }
 
         // Animate score bump
@@ -2137,6 +2215,19 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
         energonHud.classList.toggle('overdrive-active', overdriveActive);
+        if (touchSuitBtn) {
+            const labelEl = touchSuitBtn.querySelector('.touch-label');
+            if (labelEl) {
+                if (overdriveActive) {
+                    labelEl.innerText = "OVERDRIVE";
+                } else if (energonMeter >= ENERGON_MAX) {
+                    labelEl.innerText = "OVERDRIVE!";
+                } else {
+                    labelEl.innerText = "SUIT";
+                }
+            }
+            touchSuitBtn.classList.toggle('overdrive-ready', energonMeter >= ENERGON_MAX && !overdriveActive);
+        }
     }
 
     // Triggered by pressing the transform ("gear") key once the meter is full.
@@ -2310,9 +2401,26 @@ document.addEventListener("DOMContentLoaded", () => {
         const boss = activeBoss;
         boss.bobOffset += 0.05;
 
-        // Boss holds a fixed pace just off the left edge, close behind the player.
-        const targetX = -boss.width + 34;
-        boss.x += (targetX - boss.x) * 0.04;
+        // Dynamic pursuit positioning: Boss pursues menacingly behind the player in the rear threat zone
+        // Calculates a stalking distance so the boss is clearly visible chasing the hero
+        const pursuitGap = Math.max(50, Math.min(160, Math.round(player.x * 0.62)));
+        let targetBossX = player.x - pursuitGap - boss.width;
+
+        // When telegraphing, the boss lunges/stomps forward closer
+        if (boss.state === 'telegraph') {
+            targetBossX += 32;
+        } else if (boss.state === 'attacking') {
+            targetBossX += 44;
+        } else if (boss.state === 'recover') {
+            targetBossX -= 26;
+        }
+
+        // Clamp so boss stays visible on canvas and never passes player
+        const minBossX = canvas.width < 640 ? -25 : 10;
+        const maxBossX = player.x - 65;
+        targetBossX = Math.max(minBossX, Math.min(maxBossX, targetBossX));
+
+        boss.x += (targetBossX - boss.x) * 0.05;
         boss.y = groundY - boss.height + Math.sin(boss.bobOffset) * 4;
 
         boss.stateTimer--;
@@ -2335,6 +2443,20 @@ document.addEventListener("DOMContentLoaded", () => {
         boss.telegraphAlpha = boss.state === 'telegraph' ? Math.abs(Math.sin(Date.now() / 60)) : 0;
 
         drawBossSprite(boss);
+
+        // Visual threat targeting laser / telegraph line from boss to player
+        if (boss.state === 'telegraph') {
+            ctx.save();
+            ctx.strokeStyle = boss.color;
+            ctx.setLineDash([8, 6]);
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.35 + boss.telegraphAlpha * 0.45;
+            ctx.beginPath();
+            ctx.moveTo(boss.x + boss.width, boss.y + boss.height * 0.6);
+            ctx.lineTo(player.x, boss.id === 'megatron' ? player.y + player.height * 0.5 : groundY);
+            ctx.stroke();
+            ctx.restore();
+        }
 
         if (bossWarningEl) {
             if (boss.state === 'telegraph') {
@@ -2584,9 +2706,12 @@ document.addEventListener("DOMContentLoaded", () => {
             updatePowerUpHud();
             return;
         }
+        const hazardType = hz.type === 'shockwave' ? 'BOSS SHOCKWAVE' : 'NEMESIS IMPACT';
+        const hitX = hz.x || player.x;
+        const hitY = hz.y || player.y;
         bossHazards.splice(index, 1);
         breakCombo();
-        gameOver();
+        startDeathSequence(hazardType, hitX, hitY, null);
     }
 
     // --- Weather Engine Functions ---
@@ -2827,6 +2952,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (isPaused) {
             cancelAnimationFrame(animationId);
             pauseOverlay.classList.remove("hidden");
+            if (mobileControlsBar) mobileControlsBar.classList.add("hidden");
             pauseBtn.classList.add("paused");
             if (pauseIcon) pauseIcon.innerText = "▶";
             if (pauseLabel) pauseLabel.innerText = "RESUME";
@@ -2848,6 +2974,7 @@ document.addEventListener("DOMContentLoaded", () => {
             playSfx('pause');
         } else {
             pauseOverlay.classList.add("hidden");
+            if (mobileControlsBar) mobileControlsBar.classList.remove("hidden");
             pauseBtn.classList.remove("paused");
             if (pauseIcon) pauseIcon.innerText = "⏸";
             if (pauseLabel) pauseLabel.innerText = "PAUSE";
@@ -2860,6 +2987,7 @@ document.addEventListener("DOMContentLoaded", () => {
         isPaused = false;
         gameRunning = false;
         cancelAnimationFrame(animationId);
+        if (mobileControlsBar) mobileControlsBar.classList.add("hidden");
         pauseOverlay.classList.add("hidden");
         pauseBtn.classList.add("hidden");
         powerupHud.classList.add("hidden");
@@ -2894,6 +3022,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (pauseIcon) pauseIcon.innerText = "⏸";
                 if (pauseLabel) pauseLabel.innerText = "PAUSE";
             }
+            if (mobileControlsBar) mobileControlsBar.classList.remove("hidden");
             resetGame();
             gameRunning = true;
             animationId = requestAnimationFrame(gameLoop);
@@ -2988,6 +3117,7 @@ document.addEventListener("DOMContentLoaded", () => {
         pauseBtn.classList.remove("hidden");
         powerupHud.classList.remove("hidden");
         if (energonHud) energonHud.classList.remove("hidden");
+        if (mobileControlsBar) mobileControlsBar.classList.remove("hidden");
 
         resizeCanvas();
         resetGame();
@@ -3135,21 +3265,26 @@ document.addEventListener("DOMContentLoaded", () => {
         const gearBinding = currentKeyBindings.gear;
         if (e.code === gearBinding.code || (gearBinding.altCode && e.code === gearBinding.altCode)) {
             e.preventDefault();
-            // A full Energon meter reroutes the transform key into triggering
-            // the Overdrive Ultimate State instead of cycling suits.
-            if (energonMeter >= ENERGON_MAX && !overdriveActive) {
-                triggerOverdrive();
-                return;
-            }
-            const nextMode = cycleCurrentForm();
-            const charCfg = formConfig[selectedCharacter];
-            const label = charCfg ? charCfg.forms[nextMode].label : nextMode;
-            playSfx('gear');
-            spawnFloatingText(player.x + player.width / 2, player.y - 18, `⚡ ${label.toUpperCase()}`, "#38bdf8");
-            triggerScreenShake(3, 8);
+            triggerSuitOrOverdrive();
             return;
         }
     });
+
+    function triggerSuitOrOverdrive() {
+        if (!gameRunning || isPaused) return;
+        getAudioContext();
+        // A full Energon meter reroutes into triggering the Overdrive Ultimate State
+        if (energonMeter >= ENERGON_MAX && !overdriveActive) {
+            triggerOverdrive();
+            return;
+        }
+        const nextMode = cycleCurrentForm();
+        const charCfg = formConfig[selectedCharacter];
+        const label = charCfg ? charCfg.forms[nextMode].label : nextMode;
+        playSfx('gear');
+        spawnFloatingText(player.x + player.width / 2, player.y - 18, `⚡ ${label.toUpperCase()}`, "#38bdf8");
+        triggerScreenShake(3, 8);
+    }
 
     window.addEventListener("keyup", (e) => {
         const jumpBinding = currentKeyBindings.jump;
@@ -3158,10 +3293,127 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    canvas.addEventListener("click", () => {
+    // ==========================================
+    // MOBILE TOUCH & DUAL-ZONE CANVAS CONTROLS
+    // ==========================================
+    // Supports intuitive two-handed mobile gameplay:
+    // Left half screen touch/hold = Jump / Thruster Flight
+    // Right half screen touch = Fire Active Weapon / Attack
+    canvas.addEventListener("touchstart", (e) => {
         if (!gameRunning || isPaused) return;
-        triggerAction(true);
+        e.preventDefault();
+        getAudioContext();
+        const rect = canvas.getBoundingClientRect();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const touch = e.changedTouches[i];
+            const touchX = touch.clientX - rect.left;
+            if (touchX < rect.width * 0.5) {
+                jumpKeyHeld = true;
+                triggerAction(false);
+            } else {
+                triggerAction(true);
+            }
+        }
+    }, { passive: false });
+
+    canvas.addEventListener("touchend", (e) => {
+        if (!gameRunning || isPaused) return;
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        let leftTouchStillActive = false;
+        for (let i = 0; i < e.targetTouches.length; i++) {
+            const touch = e.targetTouches[i];
+            if (touch.clientX - rect.left < rect.width * 0.5) {
+                leftTouchStillActive = true;
+                break;
+            }
+        }
+        if (!leftTouchStillActive) {
+            jumpKeyHeld = false;
+        }
+    }, { passive: false });
+
+    canvas.addEventListener("touchcancel", () => {
+        jumpKeyHeld = false;
     });
+
+    // Dual-zone mouse click fallback (left half jumps, right half shoots)
+    canvas.addEventListener("click", (e) => {
+        if (!gameRunning || isPaused) return;
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        if (clickX < rect.width * 0.5) {
+            triggerAction(false);
+        } else {
+            triggerAction(true);
+        }
+    });
+
+    // On-screen mobile tactical action buttons
+    if (touchJumpBtn) {
+        touchJumpBtn.addEventListener("touchstart", (e) => {
+            e.preventDefault();
+            touchJumpBtn.classList.add("active");
+            jumpKeyHeld = true;
+            triggerAction(false);
+        }, { passive: false });
+
+        touchJumpBtn.addEventListener("touchend", (e) => {
+            e.preventDefault();
+            touchJumpBtn.classList.remove("active");
+            jumpKeyHeld = false;
+        }, { passive: false });
+
+        touchJumpBtn.addEventListener("touchcancel", () => {
+            touchJumpBtn.classList.remove("active");
+            jumpKeyHeld = false;
+        });
+
+        touchJumpBtn.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            touchJumpBtn.classList.add("active");
+            jumpKeyHeld = true;
+            triggerAction(false);
+        });
+
+        window.addEventListener("mouseup", () => {
+            if (touchJumpBtn) touchJumpBtn.classList.remove("active");
+        });
+    }
+
+    if (touchSuitBtn) {
+        const handleSuit = (e) => {
+            e.preventDefault();
+            touchSuitBtn.classList.add("active");
+            triggerSuitOrOverdrive();
+            setTimeout(() => {
+                if (touchSuitBtn) touchSuitBtn.classList.remove("active");
+            }, 150);
+        };
+        touchSuitBtn.addEventListener("touchstart", handleSuit, { passive: false });
+        touchSuitBtn.addEventListener("click", handleSuit);
+    }
+
+    if (touchAttackBtn) {
+        const handleAttack = (e) => {
+            e.preventDefault();
+            touchAttackBtn.classList.add("active");
+            triggerAction(true);
+            setTimeout(() => {
+                if (touchAttackBtn) touchAttackBtn.classList.remove("active");
+            }, 150);
+        };
+        touchAttackBtn.addEventListener("touchstart", handleAttack, { passive: false });
+        touchAttackBtn.addEventListener("click", handleAttack);
+    }
+
+    if (energonHud) {
+        energonHud.addEventListener("click", () => {
+            if (energonMeter >= ENERGON_MAX && !overdriveActive) {
+                triggerOverdrive();
+            }
+        });
+    }
 
     function getGroundY() {
         return canvas.height - 70;
@@ -3170,6 +3422,9 @@ document.addEventListener("DOMContentLoaded", () => {
     function resetGame() {
         updatePlayerDimensions();
         const groundY = getGroundY();
+        player.baseX = getPlayerBaseX();
+        player.x = player.baseX;
+        player.targetX = player.baseX;
         player.y = groundY - player.height;
         player.vy = 0;
         player.isJumping = false;
@@ -3194,6 +3449,8 @@ document.addEventListener("DOMContentLoaded", () => {
         victoryCelebrationTimer = 0;
         isOverdriveMode = false;
         victoryCelebrationParticles = [];
+        isDying = false;
+        deathSequenceTimer = 0;
         deathReplayBuffer = [];
         if (replayLaunchBtn) replayLaunchBtn.classList.add("hidden");
         if (victoryModal) victoryModal.classList.add("hidden");
@@ -3243,6 +3500,16 @@ document.addEventListener("DOMContentLoaded", () => {
     function drawPlayer(x, y, charOverride = null, gearOverride = null, pose = 'normal') {
         ctx.save();
         ctx.translate(x, y);
+
+        // Death Animation Ragdoll/Tumble Transform
+        if (pose === 'death' && deathPlayerState) {
+            ctx.translate(player.width / 2, player.height / 2);
+            ctx.rotate(deathPlayerState.rotation);
+            ctx.translate(-player.width / 2, -player.height / 2);
+            if (Math.random() < 0.35) {
+                ctx.translate((Math.random() - 0.5) * 4, 0); // Glitch jitter
+            }
+        }
 
         const char = charOverride || selectedCharacter;
         // Resolve the active form for whichever character is being drawn (falls back
@@ -3586,6 +3853,23 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
 
+        if (pose === 'death') {
+            // Electrical short-circuit sparks
+            ctx.strokeStyle = Math.random() > 0.5 ? '#38bdf8' : '#facc15';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            const arcX = 8 + Math.random() * (player.width - 16);
+            const arcY = 8 + Math.random() * (player.height - 16);
+            ctx.moveTo(arcX, arcY);
+            ctx.lineTo(arcX + (Math.random() - 0.5) * 14, arcY + (Math.random() - 0.5) * 14);
+            ctx.lineTo(arcX + (Math.random() - 0.5) * 20, arcY + (Math.random() - 0.5) * 20);
+            ctx.stroke();
+
+            // Flashing damage tint
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.28)';
+            ctx.fillRect(0, 0, player.width, player.height);
+        }
+
         ctx.restore();
     }
 
@@ -3669,8 +3953,531 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function drawStaticGround(groundY, theme) {
+        ctx.strokeStyle = theme.groundColor;
+        ctx.shadowColor = theme.groundColor;
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(0, groundY + player.height);
+        ctx.lineTo(canvas.width, groundY + player.height);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+    }
+
+    // --- Death Replay Black Box Recorder ---
+    function recordDeathReplayFrame() {
+        if (!gameRunning || isPaused || isDying || isReplaying) return;
+        const frame = {
+            player: {
+                x: player.x,
+                y: player.y,
+                width: player.width,
+                height: player.height,
+                isJumping: player.isJumping
+            },
+            obstacles: obstacles.map(o => ({
+                x: o.x,
+                y: o.y,
+                width: o.width,
+                height: o.height,
+                isAir: o.isAir
+            })),
+            bossHazards: bossHazards.map(b => ({
+                x: b.x,
+                y: b.y,
+                width: b.width || 16,
+                height: b.height || 16,
+                color: b.color || '#ef4444'
+            })),
+            score: score,
+            speed: gameSpeed
+        };
+        deathReplayBuffer.push(frame);
+        if (deathReplayBuffer.length > MAX_REPLAY_FRAMES) {
+            deathReplayBuffer.shift();
+        }
+    }
+
+    // --- Dramatic Death Animation Sequence Engine ---
+    function startDeathSequence(cause, impactX, impactY, obstacleRef) {
+        if (isDying) return;
+        isDying = true;
+        deathSequenceTimer = 0;
+
+        // Save death replay snapshot buffer
+        savedDeathReplay = deathReplayBuffer.slice();
+        if (replayLaunchBtn) replayLaunchBtn.classList.remove("hidden");
+
+        // Initial launch trajectory for the ragdoll death tumble
+        deathPlayerState = {
+            x: player.x,
+            y: player.y,
+            vx: -3.8 - Math.random() * 2.5,
+            vy: -8.5 - Math.random() * 2.0,
+            rotation: 0,
+            rotSpeed: (Math.random() > 0.5 ? 1 : -1) * (0.18 + Math.random() * 0.12),
+            bounceCount: 0,
+            cause: cause || 'CRITICAL IMPACT'
+        };
+
+        // Screen fx & audio crunch
+        triggerScreenShake(18, 30, true);
+        screenFlash = 0.8;
+        playSfx('death_shatter');
+
+        // High intensity shrapnel & explosion debris
+        spawnObstacleExplosion(impactX || (player.x + player.width / 2), impactY || (player.y + player.height / 2), 'nuke');
+        spawnFloatingText(player.x + 20, player.y - 20, "CRITICAL FAILURE!", "#ef4444");
+
+        // Extra debris shards flying out
+        for (let i = 0; i < 22; i++) {
+            gameParticles.push({
+                x: player.x + player.width / 2,
+                y: player.y + player.height / 2,
+                vx: (Math.random() - 0.5) * 14,
+                vy: (Math.random() - 0.8) * 12,
+                size: 3 + Math.random() * 4,
+                color: Math.random() > 0.4 ? '#ef4444' : '#facc15',
+                alpha: 1.0,
+                decay: 0.025,
+                gravity: 0.35,
+                shape: 'spark'
+            });
+        }
+    }
+
+    function updateAndDrawDeathSequence() {
+        deathSequenceTimer++;
+        const groundY = getGroundY();
+        const theme = characterConfig[selectedCharacter];
+
+        // Screen shake decay during death
+        let shakeX = (Math.random() - 0.5) * screenShakeIntensity * 2;
+        let shakeY = (Math.random() - 0.5) * screenShakeIntensity * 2;
+        screenShakeIntensity *= 0.92;
+
+        ctx.save();
+        ctx.translate(shakeX, shakeY);
+
+        // Draw background, ground, etc. in frozen / slow-mo state
+        drawDynamicBackground(0.4, groundY, player.height);
+        drawStaticGround(groundY, theme);
+
+        // Draw static frozen obstacles
+        for (let obs of obstacles) {
+            drawObstacle(obs);
+        }
+
+        // Apply physics to dying player
+        deathPlayerState.x += deathPlayerState.vx;
+        deathPlayerState.y += deathPlayerState.vy;
+        deathPlayerState.vy += 0.45; // Gravity
+        deathPlayerState.rotation += deathPlayerState.rotSpeed;
+
+        // Ground bounce collision
+        if (deathPlayerState.y + player.height >= groundY) {
+            deathPlayerState.y = groundY - player.height;
+            if (deathPlayerState.bounceCount < 2) {
+                deathPlayerState.bounceCount++;
+                deathPlayerState.vy = -deathPlayerState.vy * 0.4;
+                deathPlayerState.vx *= 0.65;
+                deathPlayerState.rotSpeed *= 0.6;
+                triggerScreenShake(8, 12);
+                playSfx('footstep');
+                // Ground impact sparks
+                for (let i = 0; i < 12; i++) {
+                    gameParticles.push({
+                        x: deathPlayerState.x + player.width / 2,
+                        y: groundY,
+                        vx: (Math.random() - 0.5) * 6,
+                        vy: -Math.random() * 4,
+                        size: 2 + Math.random() * 3,
+                        color: '#facc15',
+                        alpha: 1.0,
+                        decay: 0.04,
+                        gravity: 0.22,
+                        shape: 'spark'
+                    });
+                }
+            } else {
+                deathPlayerState.vy = 0;
+                deathPlayerState.vx *= 0.85;
+                deathPlayerState.rotSpeed *= 0.8;
+            }
+        }
+
+        // Trailing smoke & electrical short-circuit sparks from player during tumble
+        if (deathSequenceTimer % 2 === 0) {
+            gameParticles.push({
+                x: deathPlayerState.x + player.width / 2 + (Math.random() - 0.5) * 16,
+                y: deathPlayerState.y + player.height / 2 + (Math.random() - 0.5) * 16,
+                vx: (Math.random() - 0.5) * 1.5,
+                vy: -1 - Math.random() * 1.5,
+                size: 4 + Math.random() * 6,
+                color: Math.random() > 0.4 ? '#475569' : '#facc15',
+                alpha: 0.7,
+                decay: 0.025,
+                gravity: -0.02,
+                shape: 'circle'
+            });
+        }
+
+        // Draw player in death ragdoll/tumble pose
+        drawPlayer(deathPlayerState.x, deathPlayerState.y, null, null, 'death');
+
+        // Draw particle explosions
+        updateAndDrawParticles();
+        drawFloatingTexts();
+
+        // Screen Flash Overlay on lethal impact
+        if (screenFlash > 0) {
+            ctx.fillStyle = `rgba(239, 68, 68, ${Math.min(0.65, screenFlash)})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            screenFlash -= 0.035;
+        }
+
+        // Deep crimson cinematic slow-mo vignette pulse
+        const deathVignette = ctx.createRadialGradient(
+            canvas.width / 2, canvas.height / 2, canvas.height * 0.2,
+            canvas.width / 2, canvas.height / 2, canvas.width * 0.75
+        );
+        deathVignette.addColorStop(0, 'rgba(239, 68, 68, 0)');
+        deathVignette.addColorStop(1, `rgba(185, 28, 28, ${Math.min(0.55, deathSequenceTimer * 0.008)})`);
+        ctx.fillStyle = deathVignette;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // "CRITICAL IMPACT" Warning Banner in center screen during final phase
+        if (deathSequenceTimer > 28) {
+            ctx.save();
+            ctx.font = '14px "Press Start 2P", monospace';
+            ctx.fillStyle = '#ef4444';
+            ctx.shadowColor = '#ef4444';
+            ctx.shadowBlur = 14;
+            ctx.textAlign = 'center';
+            ctx.fillText("CRITICAL FAILURE", canvas.width / 2, canvas.height * 0.38);
+            ctx.font = '9px "Press Start 2P", monospace';
+            ctx.fillStyle = '#facc15';
+            ctx.fillText(deathPlayerState.cause.toUpperCase(), canvas.width / 2, canvas.height * 0.38 + 24);
+            ctx.restore();
+        }
+
+        ctx.restore();
+
+        // Transition to Game Over screen once the animation completes
+        if (deathSequenceTimer >= deathDuration) {
+            isDying = false;
+            gameOver();
+        }
+    }
+
+    // --- Victory Protocol Fireworks & Celebration Engine ---
+    function spawnVictoryFireworksBurst(x, y) {
+        const colors = ['#facc15', '#38bdf8', '#f43f5e', '#a855f7', '#22c55e', '#ffffff'];
+        const burstColor = colors[Math.floor(Math.random() * colors.length)];
+        const count = 30 + Math.floor(Math.random() * 15);
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const spd = 2 + Math.random() * 6;
+            victoryCelebrationParticles.push({
+                x: x,
+                y: y,
+                vx: Math.cos(angle) * spd,
+                vy: Math.sin(angle) * spd,
+                size: 3 + Math.random() * 5,
+                color: burstColor,
+                alpha: 1.0,
+                decay: 0.012 + Math.random() * 0.01,
+                gravity: 0.07,
+                rotation: Math.random() * Math.PI * 2,
+                rotSpeed: (Math.random() - 0.5) * 0.2,
+                type: Math.random() > 0.4 ? 'star' : 'confetti'
+            });
+        }
+        playSfx('debris_pop');
+    }
+
+    function triggerVictoryCelebration(isManual = false) {
+        getAudioContext();
+        hasTriggeredVictoryInRun = true;
+        isVictoryCelebrationActive = true;
+        victoryCelebrationTimer = 0;
+        victoryCelebrationParticles = [];
+        playSfx('victory');
+        triggerScreenShake(8, 16);
+        screenFlash = 0.5;
+
+        menuOverlay.classList.add("hidden");
+        pauseOverlay.classList.add("hidden");
+        if (victoryModal) victoryModal.classList.add("hidden");
+        if (deathReplayHud) deathReplayHud.classList.add("hidden");
+        if (mobileControlsBar) mobileControlsBar.classList.remove("hidden");
+        if (pauseBtn) pauseBtn.classList.remove("hidden");
+
+        const groundY = getGroundY();
+        player.baseX = getPlayerBaseX();
+        player.x = player.baseX;
+        player.targetX = player.baseX;
+        player.y = groundY - player.height;
+
+        spawnFloatingText(player.x + player.width / 2, player.y - 35, "★ MISSION ACCOMPLISHED! ★", "#facc15");
+        spawnVictoryFireworksBurst(player.x + 80, 100);
+        spawnVictoryFireworksBurst(player.x - 40, 140);
+        spawnVictoryFireworksBurst(canvas.width * 0.7, 80);
+
+        if (!gameRunning) {
+            gameRunning = true;
+            isPaused = false;
+            animationId = requestAnimationFrame(gameLoop);
+        }
+    }
+
+    function updateAndDrawVictoryCelebration() {
+        ctx.save();
+
+        // Golden celebratory god rays / radial glow
+        const victoryGlow = ctx.createRadialGradient(
+            player.x + player.width / 2, player.y, 20,
+            player.x + player.width / 2, player.y, canvas.width * 0.6
+        );
+        victoryGlow.addColorStop(0, 'rgba(250, 204, 21, 0.22)');
+        victoryGlow.addColorStop(0.5, 'rgba(56, 189, 248, 0.08)');
+        victoryGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = victoryGlow;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Update and draw fireworks particles
+        for (let i = victoryCelebrationParticles.length - 1; i >= 0; i--) {
+            const p = victoryCelebrationParticles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += p.gravity || 0.08;
+            p.vx *= 0.98;
+            p.alpha -= p.decay || 0.015;
+            p.rotation += p.rotSpeed || 0.05;
+
+            if (p.alpha <= 0) {
+                victoryCelebrationParticles.splice(i, 1);
+                continue;
+            }
+
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rotation);
+            ctx.globalAlpha = Math.max(0, p.alpha);
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 8;
+
+            if (p.type === 'star') {
+                ctx.beginPath();
+                for (let s = 0; s < 5; s++) {
+                    ctx.lineTo(Math.cos((18 + s * 72) * Math.PI / 180) * p.size,
+                               -Math.sin((18 + s * 72) * Math.PI / 180) * p.size);
+                    ctx.lineTo(Math.cos((54 + s * 72) * Math.PI / 180) * (p.size * 0.5),
+                               -Math.sin((54 + s * 72) * Math.PI / 180) * (p.size * 0.5));
+                }
+                ctx.closePath();
+                ctx.fill();
+            } else {
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 1.8);
+            }
+            ctx.restore();
+        }
+
+        // Floating Celebratory Banner at top of screen
+        const bannerY = Math.min(60, 20 + victoryCelebrationTimer * 0.6);
+        ctx.fillStyle = 'rgba(15, 15, 22, 0.88)';
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 2;
+        ctx.shadowColor = '#facc15';
+        ctx.shadowBlur = 16;
+        
+        const bannerW = Math.min(canvas.width * 0.75, 460);
+        const bannerX = (canvas.width - bannerW) / 2;
+        ctx.fillRect(bannerX, bannerY, bannerW, 36);
+        ctx.strokeRect(bannerX, bannerY, bannerW, 36);
+        ctx.shadowBlur = 0;
+
+        ctx.font = '10px "Press Start 2P", monospace';
+        ctx.fillStyle = '#facc15';
+        ctx.textAlign = 'center';
+        ctx.fillText("★ VICTORY PROTOCOL ACHIEVED! ★", canvas.width / 2, bannerY + 22);
+
+        ctx.restore();
+    }
+
+    function openVictoryModal() {
+        if (!victoryModal) return;
+        
+        const charName = selectedCharacter === 'dino' ? 'T-REX DINO' : (selectedCharacter === 'developer' ? 'CYBER DEV' : 'SPACE EXPLORER');
+        const formKey = selectedCharacter === 'dino' ? dinoGearMode : (selectedCharacter === 'developer' ? developerFormMode : astronautFormMode);
+        const formInfo = formConfig[selectedCharacter] ? formConfig[selectedCharacter].forms[formKey] : null;
+        const formTitle = formInfo ? formInfo.label.toUpperCase() : formKey.toUpperCase();
+
+        if (victoryHeroBanner) {
+            victoryHeroBanner.innerHTML = `
+                <div class="hero-victory-pill">
+                    <span class="hero-badge-tag">${charName}</span>
+                    <span class="hero-suit-tag">⚡ ${formTitle}</span>
+                </div>
+            `;
+        }
+
+        if (victoryFinalScoreEl) victoryFinalScoreEl.innerText = String(score).padStart(5, '0');
+        if (victoryMaxComboEl) victoryMaxComboEl.innerText = `${maxCombo}x`;
+        if (victoryDiffEl) victoryDiffEl.innerText = difficultyConfig[currentDiff].name;
+        
+        let rank = "A-TIER";
+        if (score >= 2000 || maxCombo >= 20) rank = "GODLIKE";
+        else if (score >= 1200 || maxCombo >= 14) rank = "S-TIER";
+        else if (score >= 800 || maxCombo >= 8) rank = "AVENGER";
+        if (victoryRankEl) victoryRankEl.innerText = rank;
+
+        if (pauseBtn) pauseBtn.classList.add("hidden");
+        if (mobileControlsBar) mobileControlsBar.classList.add("hidden");
+        victoryModal.classList.remove("hidden");
+    }
+
+    // --- Death Replay Flight Recorder Controls ---
+    function startDeathReplay() {
+        if (!savedDeathReplay || savedDeathReplay.length === 0) return;
+        isReplaying = true;
+        replayFrameIndex = 0;
+        replayPaused = false;
+        menuOverlay.classList.add("hidden");
+        pauseOverlay.classList.add("hidden");
+        if (victoryModal) victoryModal.classList.add("hidden");
+        if (deathReplayHud) deathReplayHud.classList.remove("hidden");
+        if (mobileControlsBar) mobileControlsBar.classList.add("hidden");
+        playSfx('death_rewind');
+        if (replayToggleBtn) replayToggleBtn.innerText = "⏸ PAUSE";
+        runDeathReplayLoop();
+    }
+
+    function rewindDeathReplay() {
+        replayFrameIndex = 0;
+        replayPaused = false;
+        playSfx('death_rewind');
+        if (replayToggleBtn) replayToggleBtn.innerText = "⏸ PAUSE";
+    }
+
+    function toggleDeathReplayPause() {
+        replayPaused = !replayPaused;
+        playSfx('select');
+        if (replayToggleBtn) replayToggleBtn.innerText = replayPaused ? "▶ PLAY" : "⏸ PAUSE";
+    }
+
+    function cycleDeathReplaySpeed() {
+        const speeds = [0.2, 0.4, 1.0];
+        const idx = speeds.indexOf(replaySpeed);
+        replaySpeed = speeds[(idx + 1) % speeds.length];
+        playSfx('select');
+        if (replaySpeedBtn) replaySpeedBtn.innerText = `${replaySpeed}x SPEED`;
+    }
+
+    function exitDeathReplay() {
+        isReplaying = false;
+        if (replayRafId) cancelAnimationFrame(replayRafId);
+        if (deathReplayHud) deathReplayHud.classList.add("hidden");
+        menuOverlay.classList.remove("hidden");
+    }
+
+    function runDeathReplayLoop() {
+        if (!isReplaying) return;
+
+        if (!replayPaused && savedDeathReplay && savedDeathReplay.length > 0) {
+            replayFrameIndex += replaySpeed;
+            if (replayFrameIndex >= savedDeathReplay.length - 1) {
+                replayFrameIndex = savedDeathReplay.length - 1;
+                replayPaused = true;
+                if (replayToggleBtn) replayToggleBtn.innerText = "▶ PLAY";
+            }
+        }
+
+        const currentFrame = savedDeathReplay[Math.floor(replayFrameIndex)] || savedDeathReplay[0];
+        const groundY = getGroundY();
+        const theme = characterConfig[selectedCharacter];
+
+        // Draw background
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawDynamicBackground(0.5, groundY, player.height);
+        drawStaticGround(groundY, theme);
+
+        if (currentFrame) {
+            // Draw obstacles from snapshot
+            for (let obs of currentFrame.obstacles) {
+                drawObstacle(obs);
+            }
+            // Draw boss hazards
+            for (let b of currentFrame.bossHazards) {
+                ctx.save();
+                ctx.fillStyle = b.color || '#ef4444';
+                ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
+                ctx.restore();
+            }
+
+            // Draw player
+            const p = currentFrame.player;
+            const isFatalFrame = Math.floor(replayFrameIndex) >= savedDeathReplay.length - 4;
+            drawPlayer(p.x, p.y, null, null, isFatalFrame ? 'death' : 'normal');
+
+            // Draw targeting reticle at fatal impact frame
+            if (isFatalFrame) {
+                ctx.save();
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(p.x + p.width / 2, p.y + p.height / 2, 28, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = '#ef4444';
+                ctx.font = '9px "Press Start 2P", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText("FATAL HIT", p.x + p.width / 2, p.y - 12);
+                ctx.restore();
+            }
+
+            // Update Timecode
+            if (replayTimecodeEl) {
+                const remainingSec = Math.max(0, (savedDeathReplay.length - 1 - replayFrameIndex) / 60);
+                replayTimecodeEl.innerText = `T-${remainingSec.toFixed(2)}s / IMPACT`;
+            }
+        }
+
+        // CRT Scanline Overlay for Death Replay
+        ctx.save();
+        ctx.fillStyle = 'rgba(18, 18, 24, 0.15)';
+        for (let y = 0; y < canvas.height; y += 4) {
+            ctx.fillRect(0, y, canvas.width, 1);
+        }
+        ctx.restore();
+
+        replayRafId = requestAnimationFrame(runDeathReplayLoop);
+    }
+
     function gameLoop() {
         if (!gameRunning || isPaused) return;
+
+        // If dying, execute the death animation sequence
+        if (isDying) {
+            updateAndDrawDeathSequence();
+            animationId = requestAnimationFrame(gameLoop);
+            return;
+        }
+
+        // Record black box flight recorder frame
+        recordDeathReplayFrame();
+
+        // Victory celebration ticking and fireworks
+        if (isVictoryCelebrationActive) {
+            victoryCelebrationTimer++;
+            if (victoryCelebrationTimer % 14 === 0) {
+                spawnVictoryFireworksBurst(
+                    Math.random() * (canvas.width - 100) + 50,
+                    Math.random() * (canvas.height * 0.45) + 40
+                );
+            }
+        }
 
         const diffCfg = difficultyConfig[currentDiff] || difficultyConfig.avenger;
         const theme = characterConfig[selectedCharacter];
@@ -3738,12 +4545,39 @@ document.addEventListener("DOMContentLoaded", () => {
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        // A portal ring grants a temporary flight/altitude-shift window to any
-        // character or form, on top of whichever forms natively fly.
+        // Dynamic Forward Stance & Kinetic World Traversal
+        // Adjusts the player's horizontal positioning so they actively surge forward
+        // into the world rather than remaining locked statically against the screen edge.
+        // Provides ample rear maneuver space to observe and evade active chasers behind.
         const flightActive = isFlightFormActive() || temporaryFlightOverride > 0;
         if (temporaryFlightOverride > 0) temporaryFlightOverride--;
         const FLIGHT_CEILING = 12; // highest the player can thrust to (px from canvas top)
         const FLIGHT_THRUST = -0.9; // per-frame acceleration while thrust key is held
+
+        player.baseX = getPlayerBaseX();
+        let targetPlayerX = player.baseX;
+
+        // 1. Kinetic speed surge: higher running speeds press the character into a forward sprint lead
+        const speedLead = Math.min(55, Math.max(0, (effectiveSpeed - 6) * 5.5));
+        targetPlayerX += speedLead;
+
+        // 2. Flight / thruster aerodynamic propulsion
+        if (flightActive && player.isJumping) {
+            targetPlayerX += 18;
+        }
+
+        // 3. Energon Overdrive warp surge
+        if (overdriveActive) {
+            targetPlayerX += 45;
+        }
+
+        // 4. Evasive instinct: when chaser boss telegraphs an attack from behind, pull forward
+        if (activeBoss && activeBoss.state === 'telegraph') {
+            targetPlayerX += 28;
+        }
+
+        player.targetX = targetPlayerX;
+        player.x += (player.targetX - player.x) * 0.08;
 
         if (flightActive && player.isJumping) {
             // True vertical flight: hold jump to thrust up, release to glide down.
@@ -3785,8 +4619,9 @@ document.addEventListener("DOMContentLoaded", () => {
             spawnRunParticles(player.x + 4, player.y + player.height * 0.6);
         }
 
-        // Draw Player with invincibility / shield effects
-        drawPlayer(player.x, player.y);
+        // Draw Player with invincibility / shield effects / victory pose
+        const currentPose = isVictoryCelebrationActive ? 'victory' : 'normal';
+        drawPlayer(player.x, player.y, null, null, currentPose);
 
         // Player Shield / Invincible Forcefield Rendering
         if (activeBuffs.shield || activeBuffs.invincibleTimer > 0) {
@@ -4043,7 +4878,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     continue;
                 } else {
                     breakCombo();
-                    gameOver();
+                    startDeathSequence('OBSTACLE IMPACT', obs.x + obs.width / 2, obs.y + obs.height / 2, obs);
                     return;
                 }
             }
@@ -4113,6 +4948,15 @@ document.addEventListener("DOMContentLoaded", () => {
             screenFlash -= 0.04;
         }
 
+        // Victory Protocol Celebration Overlay & Fireworks
+        if (isVictoryCelebrationActive) {
+            updateAndDrawVictoryCelebration();
+            if (victoryCelebrationTimer >= 180) {
+                isVictoryCelebrationActive = false;
+                openVictoryModal();
+            }
+        }
+
         ctx.restore(); // Restore camera screen shake transform
 
         // Smooth Rolling Visual Score Interpolation
@@ -4156,6 +5000,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function gameOver() {
         gameRunning = false;
         isPaused = false;
+        isDying = false;
         cancelAnimationFrame(animationId);
         triggerScreenShake(16, 28, true);
         visualScore = score;
@@ -4165,6 +5010,10 @@ document.addEventListener("DOMContentLoaded", () => {
         if (comboBadge) comboBadge.classList.add("hidden");
         if (energonHud) energonHud.classList.add("hidden");
         if (bossWarningEl) bossWarningEl.classList.add("hidden");
+        if (mobileControlsBar) mobileControlsBar.classList.add("hidden");
+        if (savedDeathReplay && savedDeathReplay.length > 0 && replayLaunchBtn) {
+            replayLaunchBtn.classList.remove("hidden");
+        }
         playSfx('game_over');
 
         fetch('/api/score', {

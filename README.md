@@ -4,7 +4,7 @@
 
 **Just Run DINO!** is an action-packed, arcade-style offline runner game built with HTML5 Canvas, JavaScript, and a Flask/Node backend. Choose your champion from a multiverse of heroes, transform into legendary suits or vehicles on the fly, dodge active chaser bosses, and blast your way through high-intensity obstacles!
 
-[Live Demo](https://https://just-run-dino.onrender.com/) · [Report Bug](https://github.com/mhdhamka/Just-run-DINO/issues) · [Request Feature](https://github.com/mhdhamka/Just-run-DINO/issues)
+[Live Demo](https://just-run-dino.onrender.com/) · [Report Bug](https://github.com/mhdhamka/Just-run-DINO/issues) · [Request Feature](https://github.com/mhdhamka/Just-run-DINO/issues)
 
 [![Flask](https://img.shields.io/badge/Flask-Backend-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![JavaScript](https://img.shields.io/badge/JavaScript-ES6+-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)](https://developer.mozilla.org/)

@@ -72,6 +72,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let selectedCharacter = "dino"; 
     let dinoGearMode = "standard"; // Options: 'standard', 'ironman', 'thor', 'cap', 'thanos'
+    let astronautFormMode = "rocket"; // Options: 'rocket' (flight), 'optimus' (ground vehicle), 'bumblebee' (ground vehicle)
+    let developerFormMode = "standard"; // Options: 'standard', 'ultron', 'vision'
+    let jumpKeyHeld = false; // Tracks sustained thrust input for true-flight forms
     let gameRunning = false;
     let isPaused = false;
     let score = 0;
@@ -170,9 +173,13 @@ document.addEventListener("DOMContentLoaded", () => {
             else if (dinoGearMode === 'thanos') colors = ['#c084fc', '#a855f7', '#7c3aed'];
             else colors = ['#86efac', '#4ade80'];
         } else if (selectedCharacter === 'astronaut') {
-            colors = ['#38bdf8', '#67e8f9', '#ffffff'];
+            if (astronautFormMode === 'optimus') colors = ['#dc2626', '#2563eb', '#94a3b8'];
+            else if (astronautFormMode === 'bumblebee') colors = ['#facc15', '#1e293b', '#fde047'];
+            else colors = ['#38bdf8', '#67e8f9', '#ffffff'];
         } else if (selectedCharacter === 'developer') {
-            colors = ['#22c55e', '#15803d', '#4ade80'];
+            if (developerFormMode === 'ultron') colors = ['#94a3b8', '#dc2626', '#475569'];
+            else if (developerFormMode === 'vision') colors = ['#facc15', '#a855f7', '#22c55e'];
+            else colors = ['#22c55e', '#15803d', '#4ade80'];
         }
         spawnParticles({
             x, y,
@@ -262,6 +269,10 @@ document.addEventListener("DOMContentLoaded", () => {
         else if (p.type === 'thanos_beam') color = '#c084fc';
         else if (p.type === 'laser') color = '#ef4444';
         else if (p.type === 'patch') color = '#22c55e';
+        else if (p.type === 'optimus_blast') color = '#2563eb';
+        else if (p.type === 'bee_blast') color = '#facc15';
+        else if (p.type === 'ultron_drone') color = '#ef4444';
+        else if (p.type === 'vision_beam') color = '#a855f7';
 
         if (Math.random() < 0.75) {
             spawnParticles({
@@ -1180,6 +1191,89 @@ document.addEventListener("DOMContentLoaded", () => {
         astronaut: { groundColor: "#3b82f6", bgGradient: ["#0a0a23", "#02020f"] }
     };
 
+    // ==========================================
+    // TRANSFORMATION / FORM ENGINE
+    // ==========================================
+    // Every playable character has a cycle of forms (pressing the gear/transform
+    // key steps through them). Each entry defines: display info, whether the
+    // form has true vertical flight, movement/hitbox modifiers, and its ranged
+    // attack (fired with the fire key).
+    const formConfig = {
+        dino: {
+            cycle: ['standard', 'ironman', 'thor', 'cap', 'thanos'],
+            forms: {
+                standard: { label: 'Standard T-Rex', flight: false, widthMod: 1, heightMod: 1, jumpMod: 1 },
+                ironman: { label: 'Iron Man Suit', flight: true, widthMod: 1, heightMod: 1, jumpMod: 1, projectile: 'repulsor' },
+                thor: { label: 'Thor Mjolnir', flight: false, widthMod: 1, heightMod: 1, jumpMod: 1.05, projectile: 'lightning' },
+                cap: { label: 'Captain America', flight: false, widthMod: 1, heightMod: 1, jumpMod: 1, projectile: 'shield_throw' },
+                thanos: { label: 'Thanos Gauntlet', flight: false, widthMod: 1.05, heightMod: 1, jumpMod: 0.95, projectile: 'thanos_beam' }
+            }
+        },
+        astronaut: {
+            cycle: ['rocket', 'optimus', 'bumblebee'],
+            forms: {
+                rocket: { label: 'Rocket Flight', flight: true, widthMod: 1, heightMod: 1, jumpMod: 1, projectile: 'laser' },
+                optimus: { label: 'Optimus Prime (Truck Mode)', flight: false, widthMod: 1.35, heightMod: 1.25, jumpMod: 0.75, projectile: 'optimus_blast' },
+                bumblebee: { label: 'Bumblebee (Car Mode)', flight: false, widthMod: 1.05, heightMod: 0.68, jumpMod: 1.35, projectile: 'bee_blast' }
+            }
+        },
+        developer: {
+            cycle: ['standard', 'ultron', 'vision'],
+            forms: {
+                standard: { label: 'Stressed Developer', flight: false, widthMod: 1, heightMod: 1, jumpMod: 1, projectile: 'patch' },
+                ultron: { label: 'Ultron Protocol', flight: false, widthMod: 1.1, heightMod: 1.1, jumpMod: 0.95, projectile: 'ultron_drone' },
+                vision: { label: 'Vision Android', flight: false, widthMod: 1, heightMod: 1, jumpMod: 1.1, projectile: 'vision_beam' }
+            }
+        }
+    };
+
+    // Returns the current form key for whichever character is selected
+    function getCurrentFormMode() {
+        if (selectedCharacter === 'dino') return dinoGearMode;
+        if (selectedCharacter === 'astronaut') return astronautFormMode;
+        if (selectedCharacter === 'developer') return developerFormMode;
+        return 'standard';
+    }
+
+    function setCurrentFormMode(mode) {
+        if (selectedCharacter === 'dino') dinoGearMode = mode;
+        else if (selectedCharacter === 'astronaut') astronautFormMode = mode;
+        else if (selectedCharacter === 'developer') developerFormMode = mode;
+    }
+
+    // Returns the formConfig entry for the currently active character+form
+    function getActiveFormDef() {
+        const charCfg = formConfig[selectedCharacter];
+        if (!charCfg) return { flight: false, widthMod: 1, heightMod: 1, jumpMod: 1 };
+        return charCfg.forms[getCurrentFormMode()] || charCfg.forms[charCfg.cycle[0]];
+    }
+
+    function isFlightFormActive() {
+        return !!getActiveFormDef().flight;
+    }
+
+    // Cycles the current character to its next transformation
+    function cycleCurrentForm() {
+        const charCfg = formConfig[selectedCharacter];
+        if (!charCfg) return;
+        const idx = charCfg.cycle.indexOf(getCurrentFormMode());
+        const nextMode = charCfg.cycle[(idx + 1) % charCfg.cycle.length];
+        setCurrentFormMode(nextMode);
+        updatePlayerDimensions();
+        updateGearBindingDescription();
+        return nextMode;
+    }
+
+    // Keeps the "CYCLE SUIT" keybind description in sync with the selected hero
+    function updateGearBindingDescription() {
+        const charCfg = formConfig[selectedCharacter];
+        if (!charCfg || !currentKeyBindings || !currentKeyBindings.gear) return;
+        const names = charCfg.cycle.map(m => charCfg.forms[m].label);
+        currentKeyBindings.gear.desc = `Switch: ${names.join(' → ')}`;
+        updateControlsHintUI();
+        if (keybindModal && !keybindModal.classList.contains('hidden')) renderKeybindsUI();
+    }
+
     fetch('/api/score')
         .then(res => res.json())
         .then(data => {
@@ -1195,6 +1289,7 @@ document.addEventListener("DOMContentLoaded", () => {
             card.classList.add("selected");
             selectedCharacter = card.getAttribute("data-char");
             updatePlayerDimensions();
+            updateGearBindingDescription();
             const container = document.querySelector(".game-container");
             if (container) {
                 container.classList.remove("theme-developer", "theme-astronaut");
@@ -1216,15 +1311,37 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     function updatePlayerDimensions() {
+        let baseWidth, baseHeight;
         if (selectedCharacter === 'dino') {
-            player.width = 62;
-            player.height = 48;
+            baseWidth = 62;
+            baseHeight = 48;
         } else if (selectedCharacter === 'developer') {
-            player.width = 42;
-            player.height = 38;
+            baseWidth = 42;
+            baseHeight = 38;
         } else {
-            player.width = 45;
-            player.height = 35;
+            baseWidth = 45;
+            baseHeight = 35;
+        }
+
+        const formDef = getActiveFormDef();
+        const wasJumping = player.isJumping;
+        const groundY = getGroundY();
+        const prevBottom = player.y + player.height;
+
+        player.width = Math.round(baseWidth * (formDef.widthMod || 1));
+        player.height = Math.round(baseHeight * (formDef.heightMod || 1));
+        player.jumpPower = -10 * (formDef.jumpMod || 1);
+        // Flight forms fall more gently since altitude is player-controlled
+        player.gravity = formDef.flight ? 0.28 : 0.5;
+
+        // Keep the player's feet planted on the ground when transforming mid-run
+        // instead of letting a height change clip through the floor or float.
+        if (player.y !== undefined) {
+            if (!wasJumping) {
+                player.y = groundY - player.height;
+            } else {
+                player.y = prevBottom - player.height;
+            }
         }
     }
     updatePlayerDimensions();
@@ -1379,6 +1496,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     loadKeyBindings();
+    updateGearBindingDescription();
     updateControlsHintUI();
 
     if (keybindToggleBtn) keybindToggleBtn.addEventListener('click', openKeybindModal);
@@ -2338,46 +2456,81 @@ document.addEventListener("DOMContentLoaded", () => {
         animationId = requestAnimationFrame(gameLoop);
     });
 
-    // Controls: Space/Up jumps. Key 'E' cycles Marvel gear! Key 'F' / Click attacks. Key 'M' toggles sound. Key 'P' or 'Escape' pauses.
+    // Fires the currently active form's ranged attack. Each form config entry
+    // owns a `projectile` type; the shape/behavior of that type lives in the
+    // projectile draw/update loop and spawnProjectileTrail().
+    function fireFormWeapon() {
+        const formDef = getActiveFormDef();
+        const type = formDef.projectile;
+        if (!type) return;
+
+        const baseX = player.x + player.width;
+        const midY = player.y + player.height / 2;
+
+        if (type === 'repulsor') {
+            projectiles.push({ x: baseX, y: player.y + 15, width: 18, height: 5, speed: 14, type });
+            playSfx('shoot', 'repulsor'); triggerScreenShake(3, 6);
+        } else if (type === 'lightning') {
+            projectiles.push({ x: baseX, y: player.y + 10, width: 22, height: 8, speed: 12, type });
+            playSfx('shoot', 'thor'); triggerScreenShake(5, 10);
+        } else if (type === 'shield_throw') {
+            projectiles.push({ x: baseX, y: player.y + 12, width: 16, height: 16, speed: 11, type });
+            playSfx('shoot', 'cap'); triggerScreenShake(3, 7);
+        } else if (type === 'thanos_beam') {
+            projectiles.push({ x: baseX, y: player.y + 5, width: 25, height: 12, speed: 13, type });
+            playSfx('shoot', 'thanos_beam'); triggerScreenShake(6, 12);
+        } else if (type === 'laser') {
+            projectiles.push({ x: baseX, y: midY - 2, width: 15, height: 4, speed: 12, type });
+            playSfx('shoot', 'laser'); triggerScreenShake(2, 5);
+        } else if (type === 'optimus_blast') {
+            // Optimus Prime: single heavy cannon shot
+            projectiles.push({ x: baseX, y: midY - 3, width: 22, height: 8, speed: 11, type });
+            playSfx('shoot'); triggerScreenShake(5, 9);
+        } else if (type === 'bee_blast') {
+            // Bumblebee: twin rapid plasma shots
+            projectiles.push({ x: baseX, y: midY - 8, width: 12, height: 4, speed: 15, type });
+            projectiles.push({ x: baseX, y: midY + 4, width: 12, height: 4, speed: 15, type });
+            playSfx('shoot'); triggerScreenShake(2, 4);
+        } else if (type === 'patch') {
+            projectiles.push({ x: baseX, y: midY - 2, width: 14, height: 6, speed: 10, type });
+            playSfx('shoot', 'patch'); triggerScreenShake(2, 5);
+        } else if (type === 'ultron_drone') {
+            // Ultron: spread pair of drone missiles
+            projectiles.push({ x: baseX, y: midY - 9, width: 13, height: 5, speed: 12, type });
+            projectiles.push({ x: baseX, y: midY + 5, width: 13, height: 5, speed: 12, type });
+            playSfx('shoot'); triggerScreenShake(3, 7);
+        } else if (type === 'vision_beam') {
+            // Vision: piercing mind-stone beam that punches through multiple obstacles
+            projectiles.push({ x: baseX, y: midY - 4, width: 26, height: 8, speed: 13, type, pierce: true });
+            playSfx('shoot'); triggerScreenShake(3, 8);
+        }
+    }
+
+    // Controls: Space/Up jumps (hold for thrust in flight forms). Key 'E' cycles
+    // transformations. Key 'F' / Click attacks. Key 'M' toggles sound. Key 'P' / Escape pauses.
     function triggerAction(isSecondary = false) {
         if (!gameRunning || isPaused) return;
         getAudioContext();
 
-        if (selectedCharacter === 'dino' && isSecondary) {
-            if (dinoGearMode === 'ironman') {
-                projectiles.push({ x: player.x + player.width, y: player.y + 15, width: 18, height: 5, speed: 14, type: 'repulsor' });
-                playSfx('shoot', 'repulsor');
-                triggerScreenShake(3, 6);
-            } else if (dinoGearMode === 'thor') {
-                projectiles.push({ x: player.x + player.width, y: player.y + 10, width: 22, height: 8, speed: 12, type: 'lightning' });
-                playSfx('shoot', 'thor');
-                triggerScreenShake(5, 10);
-            } else if (dinoGearMode === 'cap') {
-                projectiles.push({ x: player.x + player.width, y: player.y + 12, width: 16, height: 16, speed: 11, type: 'shield_throw' });
-                playSfx('shoot', 'cap');
-                triggerScreenShake(3, 7);
-            } else if (dinoGearMode === 'thanos') {
-                projectiles.push({ x: player.x + player.width, y: player.y + 5, width: 25, height: 12, speed: 13, type: 'thanos_beam' });
-                playSfx('shoot', 'thanos_beam');
-                triggerScreenShake(6, 12);
-            } else {
-                playSfx('jump');
-            }
-        } else if (selectedCharacter === 'astronaut' && isSecondary) {
-            projectiles.push({ x: player.x + player.width, y: player.y + player.height / 2 - 2, width: 15, height: 4, speed: 12, type: 'laser' });
-            playSfx('shoot', 'laser');
-            triggerScreenShake(2, 5);
-        } else if (selectedCharacter === 'developer' && isSecondary) {
-            projectiles.push({ x: player.x + player.width, y: player.y + player.height / 2 - 2, width: 14, height: 6, speed: 10, type: 'patch' });
-            playSfx('shoot', 'patch');
-            triggerScreenShake(2, 5);
-        } else {
+        if (isSecondary) {
+            fireFormWeapon();
+            return;
+        }
+
+        jumpKeyHeld = true;
+        if (isFlightFormActive()) {
+            // Flight forms: a tap gives an initial upward kick; holding the key
+            // (handled in the physics step) sustains altitude.
             if (!player.isJumping) {
-                player.vy = player.jumpPower;
-                player.isJumping = true;
                 playSfx('jump');
                 spawnJumpParticles(player.x + 12, player.y + player.height);
             }
+            player.isJumping = true;
+        } else if (!player.isJumping) {
+            player.vy = player.jumpPower;
+            player.isJumping = true;
+            playSfx('jump');
+            spawnJumpParticles(player.x + 12, player.y + player.height);
         }
     }
 
@@ -2438,18 +2591,24 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        // Marvel Suit Cycle Check
+        // Transformation Cycle Check (works for every character's form tree)
         const gearBinding = currentKeyBindings.gear;
-        if (e.code === gearBinding.code && selectedCharacter === 'dino') {
+        if (e.code === gearBinding.code || (gearBinding.altCode && e.code === gearBinding.altCode)) {
             e.preventDefault();
-            // Cycle Marvel Power Gear: Standard -> Iron Man -> Thor -> Captain America -> Thanos
-            if (dinoGearMode === 'standard') dinoGearMode = 'ironman';
-            else if (dinoGearMode === 'ironman') dinoGearMode = 'thor';
-            else if (dinoGearMode === 'thor') dinoGearMode = 'cap';
-            else if (dinoGearMode === 'cap') dinoGearMode = 'thanos';
-            else dinoGearMode = 'standard';
+            const nextMode = cycleCurrentForm();
+            const charCfg = formConfig[selectedCharacter];
+            const label = charCfg ? charCfg.forms[nextMode].label : nextMode;
             playSfx('gear');
+            spawnFloatingText(player.x + player.width / 2, player.y - 18, `⚡ ${label.toUpperCase()}`, "#38bdf8");
+            triggerScreenShake(3, 8);
             return;
+        }
+    });
+
+    window.addEventListener("keyup", (e) => {
+        const jumpBinding = currentKeyBindings.jump;
+        if (e.code === jumpBinding.code || (jumpBinding.altCode && e.code === jumpBinding.altCode)) {
+            jumpKeyHeld = false;
         }
     });
 
@@ -2468,6 +2627,7 @@ document.addEventListener("DOMContentLoaded", () => {
         player.y = groundY - player.height;
         player.vy = 0;
         player.isJumping = false;
+        jumpKeyHeld = false;
         obstacles = [];
         projectiles = [];
         powerUps = [];
@@ -2522,7 +2682,14 @@ document.addEventListener("DOMContentLoaded", () => {
         ctx.translate(x, y);
 
         const char = charOverride || selectedCharacter;
-        const gear = gearOverride || dinoGearMode;
+        // Resolve the active form for whichever character is being drawn (falls back
+        // to the currently selected character's own mode if no override is passed).
+        let gear = gearOverride;
+        if (!gear) {
+            if (char === 'dino') gear = dinoGearMode;
+            else if (char === 'astronaut') gear = astronautFormMode;
+            else if (char === 'developer') gear = developerFormMode;
+        }
 
         // Overdrive golden hero aura
         if (isOverdriveMode && pose !== 'victory') {
@@ -2714,49 +2881,145 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
         } else if (char === 'developer') {
-            ctx.fillStyle = '#374151';
-            ctx.fillRect(6, 12, 22, 14);
-            ctx.fillStyle = '#00ff66';
-            ctx.fillRect(8, 4, 18, 10);
-            ctx.fillStyle = '#f59e0b';
-            ctx.fillRect(14, -6, 10, 10);
-            const legOffset = (player.isJumping || pose === 'victory') ? 2 : Math.sin(Date.now() / 70) * 6;
-            ctx.fillStyle = '#6b7280';
-            ctx.fillRect(10, 26, 4, 10 + legOffset);
-            ctx.fillRect(20, 26, 4, 10 - legOffset);
-
-            if (pose === 'victory') {
-                // Raising coffee mug
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(30, 2, 8, 10);
+            if (gear === 'ultron') {
+                // --- ULTRON PROTOCOL (Menacing chrome/red robotic drone body) ---
+                ctx.fillStyle = '#475569'; // Gunmetal torso
+                ctx.fillRect(4, 12, player.width - 8, player.height - 16);
+                ctx.fillStyle = '#94a3b8'; // Plated head
+                ctx.fillRect(10, -4, player.width - 20, 16);
+                ctx.fillStyle = '#ef4444'; // Glowing red optic sensor
+                ctx.shadowColor = '#ef4444';
+                ctx.shadowBlur = 8;
+                ctx.fillRect(14, 2, player.width - 28, 4);
+                ctx.shadowBlur = 0;
+                const legOffset = (player.isJumping || pose === 'victory') ? 2 : Math.sin(Date.now() / 70) * 5;
+                ctx.fillStyle = '#334155';
+                ctx.fillRect(10, player.height - 8, 5, 10 + legOffset);
+                ctx.fillRect(player.width - 15, player.height - 8, 5, 10 - legOffset);
+                if (pose === 'victory') {
+                    // Hovering repulsor thrusters underfoot
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.6)';
+                    ctx.beginPath(); ctx.ellipse(12, player.height + 14, 8, 3, 0, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.ellipse(player.width - 13, player.height + 14, 8, 3, 0, 0, Math.PI * 2); ctx.fill();
+                }
+            } else if (gear === 'vision') {
+                // --- VISION ANDROID (Crimson/gold synthezoid with Mind Stone) ---
+                ctx.fillStyle = '#dc2626'; // Crimson synthetic body
+                ctx.fillRect(6, 10, player.width - 12, player.height - 14);
+                ctx.fillStyle = '#166534'; // Deep green cape-cowl
+                ctx.fillRect(2, 6, 6, player.height - 6);
+                ctx.fillStyle = '#facc15'; // Golden faceplate & cape trim
+                ctx.fillRect(10, -4, player.width - 20, 14);
+                ctx.fillStyle = '#a855f7'; // Glowing Mind Stone
+                ctx.shadowColor = '#a855f7';
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(player.width / 2, 2, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                const legOffset = (player.isJumping || pose === 'victory') ? 2 : Math.sin(Date.now() / 70) * 5;
+                ctx.fillStyle = '#166534';
+                ctx.fillRect(10, player.height - 8, 5, 10 + legOffset);
+                ctx.fillRect(player.width - 15, player.height - 8, 5, 10 - legOffset);
+                if (pose === 'victory' || player.isJumping) {
+                    // Subtle phase-through translucency while airborne
+                    ctx.globalAlpha *= 0.85;
+                }
+            } else {
+                // --- STRESSED DEVELOPER (Standard) ---
+                ctx.fillStyle = '#374151';
+                ctx.fillRect(6, 12, 22, 14);
+                ctx.fillStyle = '#00ff66';
+                ctx.fillRect(8, 4, 18, 10);
                 ctx.fillStyle = '#f59e0b';
-                ctx.fillRect(32, 4, 4, 2);
+                ctx.fillRect(14, -6, 10, 10);
+                const legOffset = (player.isJumping || pose === 'victory') ? 2 : Math.sin(Date.now() / 70) * 6;
+                ctx.fillStyle = '#6b7280';
+                ctx.fillRect(10, 26, 4, 10 + legOffset);
+                ctx.fillRect(20, 26, 4, 10 - legOffset);
+
+                if (pose === 'victory') {
+                    // Raising coffee mug
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(30, 2, 8, 10);
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.fillRect(32, 4, 4, 2);
+                }
             }
 
         } else if (char === 'astronaut') {
-            ctx.fillStyle = '#f8fafc';
-            ctx.beginPath();
-            ctx.moveTo(0, 12);
-            ctx.lineTo(player.width, player.height / 2);
-            ctx.lineTo(0, player.height - 2);
-            ctx.closePath();
-            ctx.fill();
-            ctx.fillStyle = '#38bdf8';
-            ctx.beginPath();
-            ctx.arc(player.width - 16, player.height / 2, 6, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#f97316';
-            ctx.fillRect(-10 + Math.sin(Date.now() / 30) * 3, 12, 10, 12);
+            if (gear === 'optimus') {
+                // --- OPTIMUS PRIME TRUCK MODE (Boxy red/blue rig, ground vehicle) ---
+                ctx.fillStyle = '#1d4ed8'; // Blue cab
+                ctx.fillRect(0, 4, player.width * 0.55, player.height - 6);
+                ctx.fillStyle = '#dc2626'; // Red trailer/flame body
+                ctx.fillRect(player.width * 0.5, player.height * 0.25, player.width * 0.5, player.height * 0.6);
+                ctx.fillStyle = '#94a3b8'; // Chrome grille & windshield
+                ctx.fillRect(2, player.height * 0.35, player.width * 0.18, player.height * 0.3);
+                ctx.fillStyle = '#facc15'; // Headlights
+                ctx.fillRect(1, player.height - 10, 4, 4);
+                ctx.fillStyle = '#0f172a'; // Wheels
+                ctx.beginPath(); ctx.arc(10, player.height + 2, 6, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(player.width - 12, player.height + 2, 6, 0, Math.PI * 2); ctx.fill();
+                if (pose === 'victory') {
+                    ctx.fillStyle = 'rgba(29, 78, 216, 0.5)';
+                    ctx.shadowColor = '#3b82f6';
+                    ctx.shadowBlur = 16;
+                    ctx.fillRect(player.width * 0.3, -18, 6, 24);
+                    ctx.shadowBlur = 0;
+                }
+            } else if (gear === 'bumblebee') {
+                // --- BUMBLEBEE CAR MODE (Low, agile yellow/black roadster) ---
+                ctx.fillStyle = '#facc15'; // Yellow body
+                ctx.beginPath();
+                ctx.moveTo(0, player.height);
+                ctx.lineTo(4, player.height * 0.3);
+                ctx.lineTo(player.width * 0.7, 2);
+                ctx.lineTo(player.width, player.height * 0.4);
+                ctx.lineTo(player.width, player.height);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = '#1e293b'; // Racing stripes
+                ctx.fillRect(player.width * 0.2, 0, 6, player.height);
+                ctx.fillStyle = '#38bdf8'; // Windshield
+                ctx.fillRect(player.width * 0.45, player.height * 0.1, player.width * 0.25, player.height * 0.35);
+                ctx.fillStyle = '#0f172a'; // Wheels
+                ctx.beginPath(); ctx.arc(8, player.height + 1, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(player.width - 9, player.height + 1, 5, 0, Math.PI * 2); ctx.fill();
+                if (pose === 'victory') {
+                    ctx.fillStyle = 'rgba(250, 204, 21, 0.5)';
+                    ctx.shadowColor = '#facc15';
+                    ctx.shadowBlur = 14;
+                    ctx.fillRect(-10, player.height * 0.4, 10, 6);
+                    ctx.shadowBlur = 0;
+                }
+            } else {
+                // --- SPACE EXPLORER / ROCKET FLIGHT MODE (Standard, true vertical flight) ---
+                ctx.fillStyle = '#f8fafc';
+                ctx.beginPath();
+                ctx.moveTo(0, 12);
+                ctx.lineTo(player.width, player.height / 2);
+                ctx.lineTo(0, player.height - 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = '#38bdf8';
+                ctx.beginPath();
+                ctx.arc(player.width - 16, player.height / 2, 6, 0, Math.PI * 2);
+                ctx.fill();
+                const flameStretch = player.isJumping ? 6 : 0;
+                ctx.fillStyle = '#f97316';
+                ctx.fillRect(-10 - flameStretch + Math.sin(Date.now() / 30) * 3, 12, 10 + flameStretch, 12);
 
-            if (pose === 'victory') {
-                // Glowing Avengers mission flag
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(20, -16, 3, 28);
-                ctx.fillStyle = '#3b82f6';
-                ctx.fillRect(23, -16, 18, 12);
-                ctx.fillStyle = '#ffffff';
-                ctx.font = '7px "Press Start 2P", monospace';
-                ctx.fillText('A', 26, -7);
+                if (pose === 'victory') {
+                    // Glowing mission flag
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(20, -16, 3, 28);
+                    ctx.fillStyle = '#3b82f6';
+                    ctx.fillRect(23, -16, 18, 12);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '7px "Press Start 2P", monospace';
+                    ctx.fillText('A', 26, -7);
+                }
             }
         }
 
@@ -2903,8 +3166,30 @@ document.addEventListener("DOMContentLoaded", () => {
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        player.vy += player.gravity;
-        player.y += player.vy;
+        const flightActive = isFlightFormActive();
+        const FLIGHT_CEILING = 12; // highest the player can thrust to (px from canvas top)
+        const FLIGHT_THRUST = -0.9; // per-frame acceleration while thrust key is held
+
+        if (flightActive && player.isJumping) {
+            // True vertical flight: hold jump to thrust up, release to glide down.
+            if (jumpKeyHeld) {
+                player.vy += FLIGHT_THRUST;
+                if (player.vy < -8) player.vy = -8;
+                if (Math.random() < 0.6) spawnJumpParticles(player.x + player.width / 2, player.y + player.height);
+            } else {
+                player.vy += player.gravity;
+                if (player.vy > 6) player.vy = 6;
+            }
+            player.y += player.vy;
+
+            if (player.y < FLIGHT_CEILING) {
+                player.y = FLIGHT_CEILING;
+                player.vy = 0;
+            }
+        } else {
+            player.vy += player.gravity;
+            player.y += player.vy;
+        }
 
         if (player.y > groundY) {
             if (player.vy > 7) {
@@ -2919,6 +3204,10 @@ document.addEventListener("DOMContentLoaded", () => {
         // Emit footstep running dust / exhaust particles
         if (!player.isJumping && Math.random() < 0.4) {
             spawnRunParticles(player.x + 8, groundY + player.height - 2);
+        }
+        // Flight forms trail thruster exhaust while airborne
+        if (flightActive && player.isJumping && Math.random() < 0.5) {
+            spawnRunParticles(player.x + 4, player.y + player.height * 0.6);
         }
 
         // Draw Player with invincibility / shield effects
@@ -2974,6 +3263,24 @@ document.addEventListener("DOMContentLoaded", () => {
             } else if (p.type === 'thanos_beam') {
                 ctx.fillStyle = '#a855f7'; // Thanos Infinity power beam
                 ctx.fillRect(p.x, p.y, p.width, p.height);
+            } else if (p.type === 'optimus_blast') {
+                ctx.fillStyle = '#2563eb'; // Optimus Prime cannon shot
+                ctx.fillRect(p.x, p.y, p.width, p.height);
+                ctx.fillStyle = '#dc2626';
+                ctx.fillRect(p.x, p.y - 2, p.width * 0.4, 2);
+            } else if (p.type === 'bee_blast') {
+                ctx.fillStyle = '#facc15'; // Bumblebee twin plasma bolts
+                ctx.fillRect(p.x, p.y, p.width, p.height);
+            } else if (p.type === 'ultron_drone') {
+                ctx.fillStyle = '#94a3b8'; // Ultron drone missile
+                ctx.fillRect(p.x, p.y, p.width, p.height);
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(p.x + p.width - 4, p.y + 1, 3, p.height - 2);
+            } else if (p.type === 'vision_beam') {
+                ctx.fillStyle = 'rgba(168, 85, 247, 0.85)'; // Vision mind-stone beam
+                ctx.fillRect(p.x, p.y, p.width, p.height);
+                ctx.fillStyle = '#facc15';
+                ctx.fillRect(p.x + p.width / 2 - 3, p.y + p.height / 2 - 3, 6, 6);
             } else {
                 ctx.fillStyle = '#00ff66';
                 ctx.fillRect(p.x, p.y, p.width, p.height);
@@ -2982,7 +3289,7 @@ document.addEventListener("DOMContentLoaded", () => {
             for (let o = obstacles.length - 1; o >= 0; o--) {
                 let obs = obstacles[o];
                 if (p.x < obs.x + obs.width && p.x + p.width > obs.x && p.y < obs.y + obs.height && p.y + p.height > obs.y) {
-                    projectiles.splice(l, 1);
+                    if (!p.pierce) projectiles.splice(l, 1);
                     obstacles.splice(o, 1);
                     const pts = Math.round(30 * diffCfg.scoreMultiplier * (activeBuffs.doubleTimer > 0 ? 2 : 1) * comboMultiplier);
                     addScore(pts);
@@ -2992,7 +3299,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     playSfx('hit');
                     playSfx('debris_pop');
                     triggerScreenShake(5, 10);
-                    break;
+                    // Piercing beams keep traveling and can hit more obstacles this frame;
+                    // non-piercing projectiles despawn on first hit.
+                    if (!p.pierce) break;
                 }
             }
 

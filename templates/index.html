@@ -3,71 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Just Run DINO!</title>
+    <title>Just Run DINO! • Avengers Protocol</title>
     <meta name="description" content="Avengers-themed retro runner featuring Marvel T-Rex, dynamic parallax backgrounds, animated score updates, custom keyboard remapping, dynamic screen tint, advanced particles, combo meter, victory animations, and death replay.">
     <meta property="og:title" content="Just Run DINO!">
     <meta property="og:description" content="Avengers-themed retro runner featuring Marvel T-Rex, dynamic parallax backgrounds, animated score updates, custom keyboard remapping, dynamic screen tint, advanced particles, combo meter, victory animations, and death replay.">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
+<body class="avengers-protocol-body">
 
     <div class="game-container">
         <!-- Retro Scanline Effect Layer -->
-        <div class="scanlines"></div>
+        <div class="scanlines" aria-hidden="true"></div>
 
         <!-- Top Control Bar (SFX + Keybinds + Pause Button) -->
-        <div class="top-controls">
+        <header class="top-controls">
             <button id="sfx-toggle-btn" class="sfx-toggle" aria-label="Toggle Sound Effects" title="Toggle Sound Effects (Key 'M')">
-                <span id="sfx-icon" class="sfx-icon">🔊</span>
+                <span id="sfx-icon" class="sfx-icon" aria-hidden="true">🔊</span>
                 <span id="sfx-label" class="sfx-label">SFX ON</span>
             </button>
             <button id="keybind-toggle-btn" class="keybind-toggle" aria-label="Remap Controls" title="Customize Controls (Keyboard Remapping)">
-                <span class="keybind-icon">⌨️</span>
+                <span class="keybind-icon" aria-hidden="true">⌨️</span>
                 <span class="keybind-label">KEYS</span>
             </button>
             <button id="pause-btn" class="pause-btn hidden" aria-label="Pause Game" title="Pause / Resume Game">
-                <span id="pause-icon" class="pause-icon">⏸</span>
+                <span id="pause-icon" class="pause-icon" aria-hidden="true">⏸</span>
                 <span id="pause-label" class="pause-label">PAUSE</span>
             </button>
-        </div>
+        </header>
 
         <!-- Active Power-Ups HUD Bar -->
-        <div id="powerup-hud" class="powerup-hud hidden"></div>
+        <div id="powerup-hud" class="powerup-hud hidden" aria-live="polite"></div>
 
         <!-- Character & Difficulty Selection Menu Overlay -->
-        <div id="menu-overlay" class="overlay">
+        <main id="menu-overlay" class="overlay">
             <div class="header-badge">AVENGERS PROTOCOL V2.0</div>
             <h1>Just Run DINO!</h1>
             <p class="controls-hint">JUMP: [Space/Up] • ATTACK: [F] • SUIT: [E] • PAUSE: [P] • MUTE: [M]</p>
             
-            <div class="character-grid">
-                <!-- Character Card 1: T-Rex (Avengers Gear) -->
-                <div class="char-card selected" data-char="dino">
-                    <div class="char-preview dino-preview">🦖</div>
-                    <h3>Marvel T-Rex</h3>
-                    <p>Iron Man, Thor, Cap & Thanos suits available.</p>
-                    <div class="card-tag">GOD-TIER</div>
-                </div>
+            <section class="character-selection-section" aria-label="Character Selection">
+                <div class="character-grid">
+                    <!-- Character Card 1: T-Rex (Avengers Gear) -->
+                    <div class="char-card selected" data-char="dino" tabindex="0" role="button" aria-pressed="true">
+                        <div class="char-preview dino-preview" aria-hidden="true">🦖</div>
+                        <h3>Marvel T-Rex</h3>
+                        <p>Iron Man (true flight), Thor, Cap & Thanos suits.</p>
+                        <div class="card-tag">GOD-TIER</div>
+                    </div>
 
-                <!-- Character Card 2 -->
-                <div class="char-card" data-char="developer">
-                    <div class="char-preview dev-preview">💻</div>
-                    <h3>Stressed Dev</h3>
-                    <p>Running away from production bugs.</p>
-                    <div class="card-tag">FAST</div>
-                </div>
+                    <!-- Character Card 2 -->
+                    <div class="char-card" data-char="developer" tabindex="0" role="button" aria-pressed="false">
+                        <div class="char-preview dev-preview" aria-hidden="true">💻</div>
+                        <h3>Stressed Dev</h3>
+                        <p>Press E to transform into Ultron or Vision.</p>
+                        <div class="card-tag">FAST</div>
+                    </div>
 
-                <!-- Character Card 3 -->
-                <div class="char-card" data-char="astronaut">
-                    <div class="char-preview space-preview">🚀</div>
-                    <h3>Space Explorer</h3>
-                    <p>Leaping over space debris.</p>
-                    <div class="card-tag">SPECIAL</div>
+                    <!-- Character Card 3 -->
+                    <div class="char-card" data-char="astronaut" tabindex="0" role="button" aria-pressed="false">
+                        <div class="char-preview space-preview" aria-hidden="true">🚀</div>
+                        <h3>Space Explorer</h3>
+                        <p>Rocket flight, or transform into Optimus / Bumblebee.</p>
+                        <div class="card-tag">SPECIAL</div>
+                    </div>
                 </div>
-            </div>
+            </section>
 
             <!-- Difficulty Protocol Selector -->
-            <div class="difficulty-section">
+            <section class="difficulty-section" aria-label="Threat Level Selection">
                 <div class="difficulty-header">SELECT THREAT LEVEL</div>
                 <div class="difficulty-grid">
                     <button type="button" class="diff-btn" data-diff="rookie">
@@ -83,10 +85,10 @@
                         <span class="diff-desc">Insane Speed • 2.0x Points</span>
                     </button>
                 </div>
-            </div>
+            </section>
 
-            <div class="menu-actions">
-                <button id="start-btn" class="primary-btn">
+            <nav class="menu-actions" aria-label="Main Menu Navigation">
+                <button id="start-btn" class="primary-btn" type="button">
                     <span>START GAME</span>
                 </button>
                 <button id="replay-launch-btn" class="secondary-btn replay-menu-btn hidden" type="button" title="Watch Instant Death Replay">
@@ -98,13 +100,13 @@
                 <button id="menu-keybind-btn" class="secondary-btn keybind-menu-btn" type="button" title="Customize Controls">
                     <span>⌨️ CONTROLS</span>
                 </button>
-            </div>
-        </div>
+            </nav>
+        </main>
 
         <!-- Tactical Pause Overlay -->
-        <div id="pause-overlay" class="overlay hidden">
+        <div id="pause-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pause-heading">
             <div class="header-badge warning-badge">TACTICAL PAUSE</div>
-            <h2>MISSION SUSPENDED</h2>
+            <h2 id="pause-heading">MISSION SUSPENDED</h2>
             <p id="pause-stats-text">Battle simulation frozen. Ready to resume fight?</p>
             
             <div class="pause-stat-grid">
@@ -131,17 +133,17 @@
             </div>
 
             <div class="pause-actions">
-                <button id="resume-btn" class="primary-btn"><span>RESUME</span></button>
-                <button id="pause-keybind-btn" class="secondary-btn"><span>KEYS ⌨️</span></button>
-                <button id="restart-btn" class="secondary-btn"><span>RESTART</span></button>
-                <button id="menu-btn" class="secondary-btn"><span>HERO SELECT</span></button>
+                <button id="resume-btn" class="primary-btn" type="button"><span>RESUME</span></button>
+                <button id="pause-keybind-btn" class="secondary-btn" type="button"><span>KEYS ⌨️</span></button>
+                <button id="restart-btn" class="secondary-btn" type="button"><span>RESTART</span></button>
+                <button id="menu-btn" class="secondary-btn" type="button"><span>HERO SELECT</span></button>
             </div>
         </div>
 
         <!-- Cybernetic Keyboard Remapping Modal -->
-        <div id="keybind-modal" class="overlay hidden keybind-modal">
+        <div id="keybind-modal" class="overlay hidden keybind-modal" role="dialog" aria-modal="true" aria-labelledby="keybind-heading">
             <div class="header-badge cyan-badge">NEURAL LINK HARDWARE</div>
-            <h2>CONTROLS REMAPPING</h2>
+            <h2 id="keybind-heading">CONTROLS REMAPPING</h2>
             <p id="keybind-status-hint">Click on any action slot below, then press your desired key to rebind.</p>
             
             <div class="keybind-grid" id="keybind-grid">
@@ -155,9 +157,9 @@
         </div>
 
         <!-- Victory Protocol Modal Overlay -->
-        <div id="victory-modal" class="overlay hidden victory-modal">
+        <div id="victory-modal" class="overlay hidden victory-modal" role="dialog" aria-modal="true" aria-labelledby="victory-heading">
             <div class="victory-header-badge">★ MISSION ACCOMPLISHED ★</div>
-            <h1 class="victory-title">VICTORY PROTOCOL!</h1>
+            <h1 id="victory-heading" class="victory-title">VICTORY PROTOCOL!</h1>
             <div id="victory-hero-banner" class="victory-hero-banner">
                 <!-- Injected via JavaScript based on hero and suit -->
             </div>
@@ -196,10 +198,10 @@
         </div>
 
         <!-- Death Replay Flight Recorder HUD (Rendered over active canvas) -->
-        <div id="death-replay-hud" class="death-replay-hud hidden">
+        <div id="death-replay-hud" class="death-replay-hud hidden" aria-live="assertive">
             <div class="replay-top-bar">
                 <div class="replay-badge-group">
-                    <span class="replay-rec-badge"><span class="rec-dot"></span> REC BLACK BOX</span>
+                    <span class="replay-rec-badge"><span class="rec-dot" aria-hidden="true"></span> REC BLACK BOX</span>
                     <span id="replay-timecode" class="replay-timecode">T-03.40s / IMPACT</span>
                 </div>
                 <span id="replay-status-tag" class="replay-status-tag">FATAL IMPACT DETECTED</span>
@@ -213,15 +215,16 @@
         </div>
 
         <!-- Game Canvas (Hidden until game starts) -->
-        <canvas id="gameCanvas" width="800" height="300" class="hidden"></canvas>
+        <canvas id="gameCanvas" width="800" height="300" class="hidden" aria-label="Game Arena"></canvas>
         
-        <div class="score-board hidden" id="scoreboard">
+        <!-- Scoreboard Header Display -->
+        <aside class="score-board hidden" id="scoreboard" aria-label="Score Tracker">
             <span>DIFF: <span id="diff-badge">AVENGER</span></span>
             <span>ENV: <span id="weather-badge">CLEAR ☀️</span></span>
             <span>COMBO: <span id="combo-badge">0x (1.0x)</span></span>
-            <span class="score-display-wrapper">SCORE: <span id="current-score" class="score-number">00000</span><span id="score-popup-anchor" class="score-popup-anchor"></span></span>
+            <span class="score-display-wrapper">SCORE: <span id="current-score" class="score-number">00000</span><span id="score-popup-anchor" class="score-popup-anchor" aria-hidden="true"></span></span>
             <span class="high-score-wrapper">HI: <span id="high-score" class="score-number">00000</span></span>
-        </div>
+        </aside>
     </div>
 
     <!-- Game Logic JS -->

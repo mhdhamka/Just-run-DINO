@@ -70,6 +70,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const replaySpeedBtn = document.getElementById("replay-speed-btn");
     const replayExitBtn = document.getElementById("replay-exit-btn");
 
+    // Energon / Overdrive & Boss Threat UI Elements
+    const energonHud = document.getElementById("energon-hud");
+    const energonBarFill = document.getElementById("energon-bar-fill");
+    const energonStatus = document.getElementById("energon-status");
+    const bossWarningEl = document.getElementById("boss-warning");
+
     let selectedCharacter = "dino"; 
     let dinoGearMode = "standard"; // Options: 'standard', 'ironman', 'thor', 'cap', 'thanos'
     let astronautFormMode = "rocket"; // Options: 'rocket' (flight), 'optimus' (ground vehicle), 'bumblebee' (ground vehicle)
@@ -1227,6 +1233,19 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
+    // ==========================================
+    // BOSS THREAT CONFIGURATION
+    // ==========================================
+    // Maps each playable character to its persistent chaser nemesis. Doomsday
+    // hunts the Dino; Megatron hunts the Astronaut/Transformer and Developer
+    // lines. Galactus is a separate, character-agnostic cosmic threat that
+    // joins the run later (see GALACTUS_UNLOCK_SCORE).
+    const bossConfig = {
+        dino: { id: 'doomsday', name: 'DOOMSDAY', icon: '🧟', color: '#dc2626', attackName: 'GROUND SLAM' },
+        astronaut: { id: 'megatron', name: 'MEGATRON', icon: '🤖', color: '#7f1d1d', attackName: 'PLASMA BARRAGE' },
+        developer: { id: 'megatron', name: 'MEGATRON', icon: '🤖', color: '#7f1d1d', attackName: 'PLASMA BARRAGE' }
+    };
+
     // Returns the current form key for whichever character is selected
     function getCurrentFormMode() {
         if (selectedCharacter === 'dino') return dinoGearMode;
@@ -1412,7 +1431,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const gearKey = formatKeyCode(currentKeyBindings.gear.code);
             const pauseKey = formatKeyCode(currentKeyBindings.pause.code);
             const muteKey = formatKeyCode(currentKeyBindings.mute.code);
-            controlsHintEl.innerText = `JUMP: [${jumpKey}] • ATTACK: [${fireKey}] • SUIT: [${gearKey}] • PAUSE: [${pauseKey}] • MUTE: [${muteKey}]`;
+            controlsHintEl.innerText = `JUMP: [${jumpKey}] • ATTACK: [${fireKey}] • SUIT: [${gearKey}] • PAUSE: [${pauseKey}] • MUTE: [${muteKey}] • OVERDRIVE: [${gearKey}] WHEN FULL`;
         }
         if (resumeBtn) {
             const pauseKey = formatKeyCode(currentKeyBindings.pause.code);
@@ -2023,6 +2042,40 @@ document.addEventListener("DOMContentLoaded", () => {
     let floatingTexts = [];
     let screenFlash = 0;
 
+    // ==========================================
+    // ENERGON / OVERDRIVE METER STATE
+    // ==========================================
+    const ENERGON_MAX = 100;
+    const OVERDRIVE_DURATION = 600; // 10 seconds @ 60fps
+    let energonMeter = 0;
+    let overdriveActive = false;
+    let overdriveTimer = 0;
+
+    // ==========================================
+    // MULTI-ALTITUDE TRANSITION PORTAL STATE
+    // ==========================================
+    const PORTAL_FLIGHT_DURATION = 300; // 5 seconds of granted flight/vehicle-swap window
+    let portals = [];
+    let portalSpawnTimer = 0;
+    let temporaryFlightOverride = 0; // frames of granted flight remaining, from portals
+
+    // ==========================================
+    // DANGER CLOSE / SKILL COMBO STATE
+    // ==========================================
+    const DANGER_CLOSE_MARGIN = 16; // px vertical clearance counted as a near-miss
+    let dangerCloseStreak = 0;
+
+    // ==========================================
+    // INTERACTIVE CHASER BOSS THREAT STATE
+    // ==========================================
+    const BOSS_UNLOCK_SCORE = 150;     // primary chaser (Doomsday / Megatron) unlocks here
+    const GALACTUS_UNLOCK_SCORE = 500; // Galactus cosmic threat joins at this score
+    let activeBoss = null;   // primary ground-level chaser (Doomsday / Megatron)
+    let galactusBoss = null; // background cosmic ultimate threat
+    let bossHazards = [];    // shockwaves / plasma bolts / cosmic debris spawned by bosses
+    let bossIntroPlayed = false;
+    let galactusIntroPlayed = false;
+
     function spawnFloatingText(x, y, text, color) {
         floatingTexts.push({
             x: x,
@@ -2050,6 +2103,490 @@ document.addEventListener("DOMContentLoaded", () => {
             pills.push(`<div class="powerup-pill double"><span>⭐</span><span>2X PTS (${secs}s)</span></div>`);
         }
         powerupHud.innerHTML = pills.join('');
+    }
+
+    // ==========================================
+    // ENERGON / OVERDRIVE METER ENGINE
+    // ==========================================
+    function addEnergon(amount) {
+        if (overdriveActive) return;
+        const wasFull = energonMeter >= ENERGON_MAX;
+        energonMeter = Math.min(ENERGON_MAX, energonMeter + amount);
+        updateEnergonUI();
+        if (!wasFull && energonMeter >= ENERGON_MAX) {
+            spawnFloatingText(player.x + player.width / 2, player.y - 30, "⚡ OVERDRIVE READY!", "#fde047");
+            playSfx('gear');
+            triggerScreenShake(3, 8);
+        }
+    }
+
+    function updateEnergonUI() {
+        if (!energonHud) return;
+        const pct = Math.round((energonMeter / ENERGON_MAX) * 100);
+        if (energonBarFill) {
+            energonBarFill.style.width = `${pct}%`;
+            energonBarFill.classList.toggle('full', energonMeter >= ENERGON_MAX && !overdriveActive);
+        }
+        if (energonStatus) {
+            if (overdriveActive) {
+                energonStatus.innerText = `OVERDRIVE ${Math.max(0, Math.ceil(overdriveTimer / 60))}s`;
+            } else if (energonMeter >= ENERGON_MAX) {
+                energonStatus.innerText = 'READY (E)';
+            } else {
+                energonStatus.innerText = `${pct}%`;
+            }
+        }
+        energonHud.classList.toggle('overdrive-active', overdriveActive);
+    }
+
+    // Triggered by pressing the transform ("gear") key once the meter is full.
+    // Grants 10 seconds of invincibility + auto-shredding of anything the
+    // player touches, with a neon particle trail.
+    function triggerOverdrive() {
+        if (overdriveActive || energonMeter < ENERGON_MAX) return;
+        overdriveActive = true;
+        overdriveTimer = OVERDRIVE_DURATION;
+        energonMeter = 0;
+        screenFlash = 0.7;
+        triggerScreenShake(10, 20, true);
+        playSfx('nuke');
+        playSfx('gear');
+        spawnFloatingText(player.x + player.width / 2, player.y - 30, "🚀 ENERGON OVERDRIVE!", "#fde047");
+        spawnParticles({
+            x: player.x + player.width / 2, y: player.y + player.height / 2,
+            count: 40, colors: ['#fde047', '#facc15', '#38bdf8', '#ffffff'],
+            minSpeed: 3, maxSpeed: 8, minSize: 2, maxSize: 5,
+            gravity: 0.05, friction: 0.93, life: 40, shape: 'spark'
+        });
+        updateEnergonUI();
+    }
+
+    function updateOverdriveTimer() {
+        if (!overdriveActive) {
+            updateEnergonUI();
+            return;
+        }
+        overdriveTimer--;
+        if (Math.random() < 0.8) {
+            spawnParticles({
+                x: player.x + player.width / 2, y: player.y + player.height / 2,
+                count: 2, colors: ['#fde047', '#38bdf8', '#ffffff'],
+                minSpeed: 1, maxSpeed: 3, minSize: 1.5, maxSize: 3.5,
+                gravity: 0, friction: 0.9, life: 18, shape: 'spark'
+            });
+        }
+        if (overdriveTimer <= 0) {
+            overdriveActive = false;
+            overdriveTimer = 0;
+            spawnFloatingText(player.x + player.width / 2, player.y - 20, "OVERDRIVE ENDED", "#94a3b8");
+        }
+        updateEnergonUI();
+    }
+
+    // Draws the player's neon overdrive aura while the ultimate state is active.
+    function drawOverdriveAura() {
+        if (!overdriveActive) return;
+        ctx.save();
+        const pulse = Math.sin(Date.now() / 70) * 4;
+        ctx.strokeStyle = '#fde047';
+        ctx.shadowColor = '#fde047';
+        ctx.shadowBlur = 22;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.ellipse(
+            player.x + player.width / 2,
+            player.y + player.height / 2,
+            player.width / 2 + 14 + pulse,
+            player.height / 2 + 14 + pulse,
+            0, 0, Math.PI * 2
+        );
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // ==========================================
+    // MULTI-ALTITUDE TRANSITION PORTAL ENGINE
+    // ==========================================
+    // Glowing tracking rings drift in from the right. Flying through a "high"
+    // ring grants a temporary flight/altitude window (useful for dodging
+    // ground hazards or boss ground-slams); a "low" ring grants the same
+    // window framed as a ground-vehicle speed boost. Both work for every
+    // character/form, letting non-flight forms borrow a flight window.
+    function maybeSpawnPortal(groundY) {
+        portalSpawnTimer++;
+        const targetInterval = 520 + Math.random() * 260; // roughly every 9-13 seconds
+        if (portalSpawnTimer < targetInterval || portals.length > 0) return;
+        portalSpawnTimer = 0;
+
+        const isHighRing = Math.random() < 0.55;
+        const ringY = isHighRing ? (40 + Math.random() * 40) : (groundY - 40);
+        portals.push({
+            x: canvas.width + 60,
+            y: ringY,
+            radius: 30,
+            spin: 0,
+            highRing: isHighRing,
+            passed: false
+        });
+    }
+
+    function updateAndDrawPortals(effectiveSpeed) {
+        for (let i = portals.length - 1; i >= 0; i--) {
+            const portal = portals[i];
+            portal.x -= effectiveSpeed;
+            portal.spin += 0.08;
+
+            ctx.save();
+            ctx.translate(portal.x, portal.y);
+            ctx.rotate(portal.spin);
+            const glowColor = portal.highRing ? '#38bdf8' : '#c084fc';
+            ctx.strokeStyle = glowColor;
+            ctx.shadowColor = glowColor;
+            ctx.shadowBlur = 18;
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, portal.radius, portal.radius * 0.42, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.6;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, portal.radius * 0.7, portal.radius * 0.3, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+
+            const playerCx = player.x + player.width / 2;
+            const playerCy = player.y + player.height / 2;
+            const dx = playerCx - portal.x;
+            const dy = playerCy - portal.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (!portal.passed && dist < portal.radius * 0.85) {
+                portal.passed = true;
+                temporaryFlightOverride = PORTAL_FLIGHT_DURATION;
+                addScore(15);
+                addEnergon(6);
+                spawnFloatingText(portal.x, portal.y - 20, portal.highRing ? "🌐 AIRSPACE MODE!" : "🌐 GROUND BOOST MODE!", glowColor);
+                spawnPowerUpPickupParticles(portal.x, portal.y, glowColor);
+                playSfx('powerup_shield');
+                triggerScreenShake(3, 8);
+            }
+
+            if (portal.x + portal.radius < 0) portals.splice(i, 1);
+        }
+    }
+
+    // ==========================================
+    // INTERACTIVE CHASER BOSS THREAT ENGINE
+    // ==========================================
+    // Doomsday / Megatron: persistent nemesis hugging the left edge just
+    // behind the player, cycling chasing -> telegraph -> attack -> recover.
+    function maybeSpawnPrimaryBoss(groundY) {
+        if (activeBoss || score < BOSS_UNLOCK_SCORE) return;
+        const cfg = bossConfig[selectedCharacter] || bossConfig.dino;
+        activeBoss = {
+            id: cfg.id,
+            name: cfg.name,
+            color: cfg.color,
+            attackName: cfg.attackName,
+            x: -90,
+            y: groundY - 60,
+            width: 84,
+            height: 66,
+            bobOffset: 0,
+            state: 'chasing',      // chasing -> telegraph -> attacking -> recover
+            stateTimer: 220 + Math.random() * 140,
+            telegraphAlpha: 0
+        };
+        if (!bossIntroPlayed) {
+            bossIntroPlayed = true;
+            spawnFloatingText(canvas.width / 2, 80, `⚠️ ${cfg.name} IS HUNTING YOU!`, '#f87171');
+            playSfx('combo_break');
+            triggerScreenShake(8, 18, true);
+        }
+    }
+
+    function updateAndDrawPrimaryBoss(groundY) {
+        if (!activeBoss) return;
+        const boss = activeBoss;
+        boss.bobOffset += 0.05;
+
+        // Boss holds a fixed pace just off the left edge, close behind the player.
+        const targetX = -boss.width + 34;
+        boss.x += (targetX - boss.x) * 0.04;
+        boss.y = groundY - boss.height + Math.sin(boss.bobOffset) * 4;
+
+        boss.stateTimer--;
+        if (boss.state === 'chasing' && boss.stateTimer <= 0) {
+            boss.state = 'telegraph';
+            boss.stateTimer = 46;
+            playSfx('shoot', boss.id === 'doomsday' ? 'thor' : 'laser');
+        } else if (boss.state === 'telegraph' && boss.stateTimer <= 0) {
+            launchBossAttack(boss, groundY);
+            boss.state = 'attacking';
+            boss.stateTimer = 20;
+        } else if (boss.state === 'attacking' && boss.stateTimer <= 0) {
+            boss.state = 'recover';
+            boss.stateTimer = 90 + Math.random() * 60;
+        } else if (boss.state === 'recover' && boss.stateTimer <= 0) {
+            boss.state = 'chasing';
+            boss.stateTimer = 220 + Math.random() * 160;
+        }
+
+        boss.telegraphAlpha = boss.state === 'telegraph' ? Math.abs(Math.sin(Date.now() / 60)) : 0;
+
+        drawBossSprite(boss);
+
+        if (bossWarningEl) {
+            if (boss.state === 'telegraph') {
+                bossWarningEl.classList.remove('hidden');
+                bossWarningEl.innerText = `⚠️ ${boss.name}: ${boss.attackName} INCOMING!`;
+            } else if (!(galactusBoss && galactusBoss.state === 'telegraph')) {
+                bossWarningEl.classList.add('hidden');
+            }
+        }
+    }
+
+    function drawBossSprite(boss) {
+        ctx.save();
+        ctx.translate(boss.x, boss.y);
+
+        if (boss.state === 'telegraph') {
+            ctx.save();
+            ctx.globalAlpha = 0.25 + boss.telegraphAlpha * 0.35;
+            ctx.fillStyle = boss.color;
+            ctx.shadowColor = boss.color;
+            ctx.shadowBlur = 30;
+            ctx.beginPath();
+            ctx.ellipse(boss.width / 2, boss.height + 4, boss.width * 0.7, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        ctx.shadowColor = boss.color;
+        ctx.shadowBlur = 16;
+
+        if (boss.id === 'doomsday') {
+            // Hulking crimson-grey brute silhouette
+            ctx.fillStyle = '#57534e';
+            ctx.fillRect(10, 10, boss.width - 20, boss.height - 14);
+            ctx.fillStyle = boss.color;
+            ctx.fillRect(4, 22, 12, 30);
+            ctx.fillRect(boss.width - 16, 22, 12, 30);
+            ctx.fillStyle = '#fde047';
+            ctx.fillRect(22, 24, 8, 5);
+            ctx.fillRect(boss.width - 34, 24, 8, 5);
+            ctx.fillStyle = '#1c1917';
+            for (let s = 0; s < 4; s++) {
+                ctx.fillRect(14 + s * 12, 6, 6, 10);
+            }
+        } else {
+            // Angular mechanical Megatron-style chassis
+            ctx.fillStyle = '#3f3f46';
+            ctx.fillRect(8, 14, boss.width - 16, boss.height - 20);
+            ctx.fillStyle = boss.color;
+            ctx.fillRect(0, 26, 14, 14);
+            ctx.fillRect(boss.width - 14, 26, 14, 14);
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.arc(boss.width / 2, 24, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(boss.width / 2 - 3, 4, 6, 20);
+        }
+
+        ctx.restore();
+    }
+
+    function launchBossAttack(boss, groundY) {
+        if (boss.id === 'doomsday') {
+            // Ground Slam: fast-travelling shockwave hugging the floor that
+            // requires a precisely-timed jump.
+            bossHazards.push({
+                type: 'shockwave',
+                x: boss.x + boss.width,
+                y: groundY - 14,
+                width: 26,
+                height: 18,
+                vx: 13,
+                color: '#dc2626'
+            });
+            triggerScreenShake(9, 16, true);
+            playSfx('hit');
+        } else {
+            // Plasma Barrage: a ground-level bolt (jump it) and a flight-altitude
+            // bolt (only a real threat while airborne — shift altitude to dodge).
+            bossHazards.push({
+                type: 'plasma', x: boss.x + boss.width, y: groundY - 26,
+                width: 22, height: 10, vx: 11, color: '#ef4444'
+            });
+            bossHazards.push({
+                type: 'plasma', x: boss.x + boss.width, y: 50,
+                width: 22, height: 10, vx: 11, color: '#f97316'
+            });
+            playSfx('shoot', 'laser');
+        }
+    }
+
+    // Galactus: a towering cosmic entity looming in the far background that
+    // joins once the run reaches GALACTUS_UNLOCK_SCORE, periodically raining
+    // celestial debris the player must dodge or shoot down.
+    function maybeSpawnGalactus() {
+        if (galactusBoss || score < GALACTUS_UNLOCK_SCORE) return;
+        galactusBoss = {
+            phase: Math.random() * Math.PI * 2,
+            state: 'looming',       // looming -> telegraph -> recover
+            stateTimer: 260 + Math.random() * 180
+        };
+        if (!galactusIntroPlayed) {
+            galactusIntroPlayed = true;
+            spawnFloatingText(canvas.width / 2, 100, "☄️ GALACTUS HAS ARRIVED!", "#c084fc");
+            playSfx('nuke');
+            triggerScreenShake(12, 26, true);
+        }
+    }
+
+    function updateAndDrawGalactus(groundY) {
+        if (!galactusBoss) return;
+        const g = galactusBoss;
+        g.phase += 0.01;
+        g.stateTimer--;
+
+        // Towering cosmic silhouette looming far in the background
+        ctx.save();
+        ctx.globalAlpha = 0.5 + Math.sin(g.phase) * 0.08;
+        ctx.fillStyle = '#4c1d95';
+        ctx.shadowColor = '#a855f7';
+        ctx.shadowBlur = 40;
+        const gx = canvas.width - 130;
+        ctx.beginPath();
+        ctx.moveTo(gx, groundY + 4);
+        ctx.lineTo(gx - 60, groundY + 4);
+        ctx.lineTo(gx - 34, groundY - 190);
+        ctx.lineTo(gx - 4, groundY - 240);
+        ctx.lineTo(gx + 26, groundY - 190);
+        ctx.lineTo(gx + 60, groundY + 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#c084fc';
+        ctx.beginPath();
+        ctx.arc(gx - 4, groundY - 180, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        if (g.state === 'looming' && g.stateTimer <= 0) {
+            g.state = 'telegraph';
+            g.stateTimer = 60;
+            playSfx('weather_shift');
+        } else if (g.state === 'telegraph' && g.stateTimer <= 0) {
+            launchGalactusAttack();
+            g.state = 'recover';
+            g.stateTimer = 320 + Math.random() * 200;
+        } else if (g.state === 'recover' && g.stateTimer <= 0) {
+            g.state = 'looming';
+            g.stateTimer = 260 + Math.random() * 180;
+        }
+
+        if (g.state === 'telegraph') {
+            ctx.save();
+            ctx.globalAlpha = Math.abs(Math.sin(Date.now() / 80)) * 0.35;
+            ctx.fillStyle = '#a855f7';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.restore();
+            if (bossWarningEl) {
+                bossWarningEl.classList.remove('hidden');
+                bossWarningEl.innerText = "☄️ GALACTUS: CELESTIAL DEBRIS INCOMING!";
+            }
+        }
+    }
+
+    function launchGalactusAttack() {
+        const debrisCount = 3;
+        for (let i = 0; i < debrisCount; i++) {
+            bossHazards.push({
+                type: 'debris',
+                x: canvas.width - 100 + i * 40,
+                y: -20 - i * 30,
+                width: 22,
+                height: 22,
+                vx: -1.5,
+                vy: 6 + Math.random() * 2,
+                color: '#c084fc',
+                spin: 0
+            });
+        }
+        triggerScreenShake(14, 26, true);
+    }
+
+    // Shockwaves, plasma bolts, and cosmic debris all live in one array so
+    // they share collision handling with the overdrive / shield systems.
+    function updateAndDrawBossHazards() {
+        for (let i = bossHazards.length - 1; i >= 0; i--) {
+            const hz = bossHazards[i];
+            hz.x += (hz.vx || 0);
+            hz.y += (hz.vy || 0);
+            if (hz.spin !== undefined) hz.spin += 0.15;
+
+            ctx.save();
+            ctx.translate(hz.x, hz.y);
+            if (hz.spin !== undefined) ctx.rotate(hz.spin);
+            ctx.fillStyle = hz.color;
+            ctx.shadowColor = hz.color;
+            ctx.shadowBlur = 14;
+            if (hz.type === 'shockwave') {
+                ctx.fillRect(-hz.width / 2, -hz.height / 2, hz.width, hz.height);
+                ctx.globalAlpha = 0.4;
+                ctx.fillRect(-hz.width, -4, hz.width * 2, 8);
+            } else if (hz.type === 'debris') {
+                ctx.beginPath();
+                ctx.moveTo(0, -hz.height / 2);
+                ctx.lineTo(hz.width / 2, hz.height / 2);
+                ctx.lineTo(-hz.width / 2, hz.height / 2);
+                ctx.closePath();
+                ctx.fill();
+            } else {
+                ctx.fillRect(-hz.width / 2, -hz.height / 2, hz.width, hz.height);
+            }
+            ctx.restore();
+
+            const hitX = hz.x - hz.width / 2, hitY = hz.y - hz.height / 2;
+            if (player.x < hitX + hz.width && player.x + player.width > hitX &&
+                player.y < hitY + hz.height && player.y + player.height > hitY) {
+                resolveHazardHit(i, hz);
+                continue;
+            }
+
+            if (hz.x < -60 || hz.x > canvas.width + 60 || hz.y > canvas.height + 60) {
+                bossHazards.splice(i, 1);
+            }
+        }
+    }
+
+    function resolveHazardHit(index, hz) {
+        if (overdriveActive || activeBuffs.invincibleTimer > 0) {
+            bossHazards.splice(index, 1);
+            spawnObstacleExplosion(hz.x, hz.y, 'nuke');
+            if (overdriveActive) {
+                addScore(20);
+                addCombo(1, hz.x, hz.y, 'HIT');
+            }
+            return;
+        }
+        if (activeBuffs.shield) {
+            activeBuffs.shield = false;
+            activeBuffs.shieldTimer = 0;
+            activeBuffs.invincibleTimer = 80;
+            bossHazards.splice(index, 1);
+            spawnObstacleExplosion(hz.x, hz.y, 'shield_break');
+            spawnFloatingText(player.x + 10, player.y - 15, "🛡️ SHIELD ABSORBED HIT!", "#00e5ff");
+            playSfx('shield_break');
+            triggerScreenShake(9, 16, true);
+            breakCombo();
+            updatePowerUpHud();
+            return;
+        }
+        bossHazards.splice(index, 1);
+        breakCombo();
+        gameOver();
     }
 
     // --- Weather Engine Functions ---
@@ -2329,6 +2866,8 @@ document.addEventListener("DOMContentLoaded", () => {
         canvas.classList.add("hidden");
         scoreboard.classList.add("hidden");
         if (comboBadge) comboBadge.classList.add("hidden");
+        if (energonHud) energonHud.classList.add("hidden");
+        if (bossWarningEl) bossWarningEl.classList.add("hidden");
         menuOverlay.classList.remove("hidden");
         playSfx('select');
     }
@@ -2448,7 +2987,8 @@ document.addEventListener("DOMContentLoaded", () => {
         scoreboard.classList.remove("hidden");
         pauseBtn.classList.remove("hidden");
         powerupHud.classList.remove("hidden");
-        
+        if (energonHud) energonHud.classList.remove("hidden");
+
         resizeCanvas();
         resetGame();
         gameRunning = true;
@@ -2595,6 +3135,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const gearBinding = currentKeyBindings.gear;
         if (e.code === gearBinding.code || (gearBinding.altCode && e.code === gearBinding.altCode)) {
             e.preventDefault();
+            // A full Energon meter reroutes the transform key into triggering
+            // the Overdrive Ultimate State instead of cycling suits.
+            if (energonMeter >= ENERGON_MAX && !overdriveActive) {
+                triggerOverdrive();
+                return;
+            }
             const nextMode = cycleCurrentForm();
             const charCfg = formConfig[selectedCharacter];
             const label = charCfg ? charCfg.forms[nextMode].label : nextMode;
@@ -2652,6 +3198,23 @@ document.addEventListener("DOMContentLoaded", () => {
         if (replayLaunchBtn) replayLaunchBtn.classList.add("hidden");
         if (victoryModal) victoryModal.classList.add("hidden");
         if (deathReplayHud) deathReplayHud.classList.add("hidden");
+
+        // Reset Energon/Overdrive, Portals, Danger Close, and Boss Threat state
+        energonMeter = 0;
+        overdriveActive = false;
+        overdriveTimer = 0;
+        portals = [];
+        portalSpawnTimer = 0;
+        temporaryFlightOverride = 0;
+        dangerCloseStreak = 0;
+        activeBoss = null;
+        galactusBoss = null;
+        bossHazards = [];
+        bossIntroPlayed = false;
+        galactusIntroPlayed = false;
+        if (bossWarningEl) bossWarningEl.classList.add("hidden");
+        updateEnergonUI();
+
         resetScreenTint();
         updateComboUI();
         initWeatherParticles(weatherTypes[0].id);
@@ -3125,6 +3688,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (activeBuffs.invincibleTimer > 0) activeBuffs.invincibleTimer--;
         updatePowerUpHud();
 
+        // Energon Overdrive countdown + Boss Threat spawn checks
+        updateOverdriveTimer();
+        maybeSpawnPrimaryBoss(groundY);
+        maybeSpawnGalactus();
+
         // Time Warp slows down obstacle velocity by 50%
         const effectiveSpeed = activeBuffs.slowmoTimer > 0 ? gameSpeed * 0.5 : gameSpeed;
 
@@ -3156,6 +3724,10 @@ document.addEventListener("DOMContentLoaded", () => {
         // Draw Dynamic Weather Particles & Atmospheric Sky Tint
         updateAndDrawWeather(effectiveSpeed, groundY);
 
+        // Boss Threat Engine: background cosmic looming + ground-level chaser
+        updateAndDrawGalactus(groundY);
+        updateAndDrawPrimaryBoss(groundY);
+
         ctx.strokeStyle = theme.groundColor;
         ctx.shadowColor = theme.groundColor;
         ctx.shadowBlur = 12;
@@ -3166,7 +3738,10 @@ document.addEventListener("DOMContentLoaded", () => {
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        const flightActive = isFlightFormActive();
+        // A portal ring grants a temporary flight/altitude-shift window to any
+        // character or form, on top of whichever forms natively fly.
+        const flightActive = isFlightFormActive() || temporaryFlightOverride > 0;
+        if (temporaryFlightOverride > 0) temporaryFlightOverride--;
         const FLIGHT_CEILING = 12; // highest the player can thrust to (px from canvas top)
         const FLIGHT_THRUST = -0.9; // per-frame acceleration while thrust key is held
 
@@ -3245,6 +3820,14 @@ document.addEventListener("DOMContentLoaded", () => {
             ctx.restore();
         }
 
+        // Energon Overdrive neon aura
+        drawOverdriveAura();
+
+        // Boss hazards (shockwaves / plasma bolts / cosmic debris) + portals
+        updateAndDrawBossHazards();
+        maybeSpawnPortal(groundY);
+        updateAndDrawPortals(effectiveSpeed);
+
         // --- Render Projectiles / Attack Effects ---
         for (let l = projectiles.length - 1; l >= 0; l--) {
             let p = projectiles[l];
@@ -3305,6 +3888,26 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
 
+            // Piercing/ranged attacks can also blast down boss hazards
+            // (shockwaves, plasma bolts, Galactus debris) before they connect.
+            for (let h = bossHazards.length - 1; h >= 0; h--) {
+                const hz = bossHazards[h];
+                const hitX = hz.x - hz.width / 2, hitY = hz.y - hz.height / 2;
+                if (p.x < hitX + hz.width && p.x + p.width > hitX && p.y < hitY + hz.height && p.y + p.height > hitY) {
+                    if (!p.pierce) projectiles.splice(l, 1);
+                    bossHazards.splice(h, 1);
+                    const pts = Math.round(40 * diffCfg.scoreMultiplier * (activeBuffs.doubleTimer > 0 ? 2 : 1) * comboMultiplier);
+                    addScore(pts);
+                    addCombo(1, hz.x, hz.y, 'HIT');
+                    addEnergon(8);
+                    spawnObstacleExplosion(hz.x, hz.y, p.type);
+                    spawnFloatingText(hz.x, hz.y - 10, `+${pts}`, "#facc15");
+                    playSfx('hit');
+                    triggerScreenShake(5, 10);
+                    if (!p.pierce) break;
+                }
+            }
+
             if (p.x > canvas.width) projectiles.splice(l, 1);
         }
 
@@ -3314,7 +3917,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 { type: 'shield', icon: '🛡️', color: '#00e5ff', name: 'SHIELD' },
                 { type: 'nuke', icon: '⚡', color: '#a855f7', name: 'MEGA BLAST' },
                 { type: 'slowmo', icon: '⏳', color: '#10b981', name: 'TIME WARP' },
-                { type: 'double', icon: '⭐', color: '#f59e0b', name: '2X SCORE' }
+                { type: 'double', icon: '⭐', color: '#f59e0b', name: '2X SCORE' },
+                { type: 'energon', icon: '🔋', color: '#fde047', name: 'ENERGON NODE' }
             ];
             const pick = types[Math.floor(Math.random() * types.length)];
             const puY = Math.random() < 0.45 ? groundY - 18 : groundY - 65;
@@ -3368,6 +3972,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     activeBuffs.doubleTimer = 600; // 10 sec
                     spawnFloatingText(player.x + 10, player.y - 15, "⭐ 2X SCORE OVERDRIVE!", "#f59e0b");
                     playSfx('powerup_double');
+                } else if (pu.type === 'energon') {
+                    addEnergon(35);
+                    spawnFloatingText(player.x + 10, player.y - 15, "🔋 ENERGON +35%!", "#fde047");
+                    playSfx('powerup_double');
                 }
                 updatePowerUpHud();
                 continue;
@@ -3399,9 +4007,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
             drawObstacle(obs);
 
+            // Track the closest vertical clearance seen while this obstacle is
+            // near the player, used for the Danger Close near-miss bonus below.
+            if (obs.x < player.x + player.width + 40 && obs.x + obs.width > player.x - 40) {
+                const gap = player.isJumping ? Math.abs((player.y + player.height) - obs.y) : Infinity;
+                if (obs.minGapSeen === undefined || gap < obs.minGapSeen) obs.minGapSeen = gap;
+            }
+
             // Collision detection
             if (player.x < obs.x + obs.width && player.x + player.width > obs.x && player.y < obs.y + obs.height && player.y + player.height > obs.y) {
-                if (activeBuffs.invincibleTimer > 0) {
+                if (overdriveActive) {
+                    // Overdrive Ultimate State: auto-shred anything touched
+                    obstacles.splice(i, 1);
+                    const pts = Math.round(20 * diffCfg.scoreMultiplier * (activeBuffs.doubleTimer > 0 ? 2 : 1));
+                    addScore(pts);
+                    addCombo(1, obs.x, obs.y, 'HIT');
+                    spawnObstacleExplosion(obs.x + obs.width / 2, obs.y + obs.height / 2, 'nuke');
+                    playSfx('debris_pop');
+                    continue;
+                } else if (activeBuffs.invincibleTimer > 0) {
                     // Safe grace window, pass through
                 } else if (activeBuffs.shield) {
                     // Shield protects the player!
@@ -3425,9 +4049,23 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             // Obstacle cleared player safely without collision -> Increment combo!
+            // A tight vertical clearance ("Danger Close") earns a bigger bonus.
             if (!obs.comboScored && obs.x + obs.width < player.x) {
                 obs.comboScored = true;
-                addCombo(1, player.x + player.width / 2, player.y - 12, 'DODGE');
+                const isDangerClose = obs.minGapSeen !== undefined && obs.minGapSeen < DANGER_CLOSE_MARGIN;
+                if (isDangerClose) {
+                    dangerCloseStreak++;
+                    const bonus = Math.round(15 * diffCfg.scoreMultiplier * comboMultiplier);
+                    addScore(bonus);
+                    addEnergon(10);
+                    addCombo(2, player.x + player.width / 2, player.y - 20, 'DANGER');
+                    spawnFloatingText(player.x + player.width / 2, player.y - 32, `⭐ DANGER CLOSE! +${bonus}`, "#fb923c");
+                    triggerScreenShake(3, 6);
+                } else {
+                    dangerCloseStreak = 0;
+                    addCombo(1, player.x + player.width / 2, player.y - 12, 'DODGE');
+                    addEnergon(3);
+                }
             }
 
             // Obstacle cleared canvas edge
@@ -3525,6 +4163,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (pauseBtn) pauseBtn.classList.add("hidden");
         if (powerupHud) powerupHud.classList.add("hidden");
         if (comboBadge) comboBadge.classList.add("hidden");
+        if (energonHud) energonHud.classList.add("hidden");
+        if (bossWarningEl) bossWarningEl.classList.add("hidden");
         playSfx('game_over');
 
         fetch('/api/score', {

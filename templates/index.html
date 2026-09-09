@@ -34,11 +34,25 @@
         <!-- Active Power-Ups HUD Bar -->
         <div id="powerup-hud" class="powerup-hud hidden" aria-live="polite"></div>
 
+        <!-- Energon / Overdrive Meter HUD -->
+        <div id="energon-hud" class="energon-hud hidden" aria-live="polite">
+            <div class="energon-label">
+                <span>⚡ ENERGON</span>
+                <span id="energon-status" class="energon-status">0%</span>
+            </div>
+            <div class="energon-bar-track">
+                <div id="energon-bar-fill" class="energon-bar-fill"></div>
+            </div>
+        </div>
+
+        <!-- Boss Threat Warning Banner -->
+        <div id="boss-warning" class="boss-warning hidden" aria-live="assertive"></div>
+
         <!-- Character & Difficulty Selection Menu Overlay -->
         <main id="menu-overlay" class="overlay">
             <div class="header-badge">AVENGERS PROTOCOL V2.0</div>
             <h1>Just Run DINO!</h1>
-            <p class="controls-hint">JUMP: [Space/Up] • ATTACK: [F] • SUIT: [E] • PAUSE: [P] • MUTE: [M]</p>
+            <p class="controls-hint">JUMP: [Space/Up] • ATTACK: [F] • SUIT: [E] • PAUSE: [P] • MUTE: [M] • OVERDRIVE: [E] WHEN FULL</p>
             
             <section class="character-selection-section" aria-label="Character Selection">
                 <div class="character-grid">

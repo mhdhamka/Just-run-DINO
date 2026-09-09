@@ -609,6 +609,113 @@ canvas {
 .powerup-pill.slowmo { border-color: #10b981; color: #10b981; }
 .powerup-pill.double { border-color: #f59e0b; color: #f59e0b; }
 .powerup-pill.nuke { border-color: #a855f7; color: #c084fc; }
+.powerup-pill.energon { border-color: #fde047; color: #fde047; }
+
+/* --- Energon / Overdrive Meter HUD --- */
+.energon-hud {
+    position: absolute;
+    top: 76px;
+    left: 20px;
+    z-index: 22;
+    background: rgba(14, 14, 20, 0.9);
+    border: 1px solid rgba(253, 224, 71, 0.35);
+    border-radius: 14px;
+    padding: 10px 14px;
+    width: 188px;
+    backdrop-filter: blur(6px);
+    font-family: 'Press Start 2P', monospace;
+    transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.energon-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 8px;
+    color: #fde047;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.energon-status {
+    color: #94a3b8;
+    font-size: 7px;
+}
+
+.energon-bar-track {
+    width: 100%;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.energon-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #f97316, #facc15);
+    transition: width 0.15s ease-out;
+}
+
+.energon-bar-fill.full {
+    background: linear-gradient(90deg, #fde047, #ffffff);
+    animation: energonPulse 0.7s infinite alternate ease-in-out;
+}
+
+@keyframes energonPulse {
+    0% { box-shadow: 0 0 4px rgba(253, 224, 71, 0.4); }
+    100% { box-shadow: 0 0 16px rgba(253, 224, 71, 0.95); }
+}
+
+.energon-hud.overdrive-active {
+    border-color: #fde047;
+    box-shadow: 0 0 24px rgba(253, 224, 71, 0.5);
+}
+
+.energon-hud.overdrive-active .energon-status {
+    color: #fde047;
+}
+
+/* --- Boss Threat Warning Banner --- */
+.boss-warning {
+    position: absolute;
+    top: 128px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 24;
+    background: rgba(20, 6, 6, 0.88);
+    border: 1px solid rgba(239, 68, 68, 0.6);
+    color: #f87171;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    animation: bossWarningPulse 0.5s infinite alternate ease-in-out;
+    pointer-events: none;
+    text-align: center;
+    max-width: 86vw;
+}
+
+@keyframes bossWarningPulse {
+    0% { box-shadow: 0 0 6px rgba(239, 68, 68, 0.4); transform: translateX(-50%) scale(1); }
+    100% { box-shadow: 0 0 22px rgba(239, 68, 68, 0.9); transform: translateX(-50%) scale(1.03); }
+}
+
+@media (max-width: 640px) {
+    .energon-hud {
+        top: 66px;
+        left: 12px;
+        width: 150px;
+        padding: 8px 10px;
+    }
+    .boss-warning {
+        top: 112px;
+        font-size: 8px;
+        padding: 8px 12px;
+    }
+}
 
 .menu-actions {
     display: flex;
